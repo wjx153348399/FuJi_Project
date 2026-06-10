@@ -1,0 +1,52 @@
+{
+  "api": {
+    "upload_url": "http://10.0.8.237:9528/ServiceQms/service-qms/file/importImpedanceData",
+    "login_url": "http://10.0.8.237:9528/ServiceQms/user/login",
+    "username": "dzn",
+    "password": "asd123,."
+  },
+  "share_drive": {
+    "host": "\\\\10.0.8.252",
+    "username": "IT",
+    "password": "FQCIT"
+  },
+  "paths": {
+    "scan_root": "\\\\10.0.8.252\\ProductionFieldFile 现场公共盘\\阻抗",
+    "log_root": "\\\\10.0.8.252\\File\\ZKLOG"
+  },
+  "scan": {
+    "recursive": true,
+    "extensions": [
+      ".xls",
+      ".xlsx"
+    ],
+    "exclude_prefixes": [
+      "~$"
+    ],
+    "exclude_dirs": [
+      "LOG"
+    ]
+  },
+  "schedule": {
+    "mode": "daily_previous_day",
+    "timezone": "Asia/Shanghai",
+    "day_offset": 1,
+    "execute_time": "00:10"
+  },
+  "dedupe": {
+    "mode": "business_key_first",
+    "fallback_mode": "filename_hash",
+    "keep_latest_in_batch": true
+  },
+  "upload": {
+    "max_retries": 1,
+    "retry_delay_seconds": 3,
+    "serial_no_prefix": "ZK",
+    "serial_no_mode": "empty",
+    "timeout_seconds": 60,
+    "retry_on_timeout": false
+  },
+  "pending": {
+    "enable_csv": true
+  }
+}

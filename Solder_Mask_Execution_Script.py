@@ -7,6 +7,8 @@ import re
 import subprocess
 import time
 import zipfile
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from xml.etree import ElementTree
 
 import requests
@@ -51,6 +53,7 @@ UPLOAD_TIMEOUT = int(config["upload"].get("timeout_seconds", 60))
 RETRY_ON_TIMEOUT = bool(config["upload"].get("retry_on_timeout", False))
 SERIAL_NO_MODE = config["upload"].get("serial_no_mode", "empty")
 SERIAL_NO_PREFIX = config["upload"].get("serial_no_prefix", "ZK")
+MAX_WORKERS = int(config["upload"].get("max_workers", 5))
 
 ENABLE_PENDING_CSV = bool(config["pending"].get("enable_csv", True))
 
@@ -59,6 +62,8 @@ FINGERPRINT_RECORDS_FILE = os.path.join(LOG_DIR, "uploaded_file_fingerprints.jso
 PENDING_TIMEOUT_FILE = os.path.join(LOG_DIR, "pending_timeout.json")
 
 F26_PATTERN = re.compile(r"(F\d{2}-\d{3}-\d{4})", re.IGNORECASE)
+
+login_lock = threading.Lock()
 
 
 def ensure_log_dir():
@@ -490,7 +495,8 @@ def upload_file(session, file_path, serial_no):
                 if response.status_code == 401:
                     print(f"[{filename}] 认证失效 (401)，正在重新登录... ({attempt + 1}/{MAX_RETRIES})")
                     try:
-                        login(session)
+                        with login_lock:
+                            login(session)
                     except Exception as login_exc:
                         print(f"[{filename}] 重新登录失败: {login_exc}")
                     if attempt < MAX_RETRIES:
@@ -549,6 +555,10 @@ def main():
     print(f"计划执行时间: {EXECUTE_TIME}，本次处理日期: {target_day}")
 
     session = requests.Session()
+    adapter = requests.adapters.HTTPAdapter(pool_connections=MAX_WORKERS, pool_maxsize=MAX_WORKERS)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    
     try:
         login(session)
         print("登录成功，开始准备上传。")
@@ -575,40 +585,51 @@ def main():
     failed_files = []
     pending_files = []
 
-    for info in selected_files:
-        uploaded, skip_status, skip_message = was_uploaded(info, business_records, fingerprint_records)
-        if uploaded:
-            print(f"历史重复跳过: {info['filename']} ({info['query_hint']})")
-            write_log(info, skip_status, skip_message, run_id)
-            skip_count += 1
-            continue
+    futures = {}
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        for info in selected_files:
+            uploaded, skip_status, skip_message = was_uploaded(info, business_records, fingerprint_records)
+            if uploaded:
+                print(f"历史重复跳过: {info['filename']} ({info['query_hint']})")
+                write_log(info, skip_status, skip_message, run_id)
+                skip_count += 1
+                continue
 
-        print(f"正在上传: {info['filename']} (路径: {info['full_path']}) ...")
-        status, response, retries = upload_file(session, info["full_path"], upload_serial_no)
-        message = response.get("message", "")
+            print(f"加入上传队列: {info['filename']} (路径: {info['full_path']}) ...")
+            future = executor.submit(upload_file, session, info["full_path"], upload_serial_no)
+            futures[future] = info
 
-        if status == "success":
-            print(f"上传成功: {info['filename']}")
-            write_log(info, "success", message, run_id, retries, response)
-            save_success_record(info, run_id, response, business_records, fingerprint_records)
-            success_count += 1
-        elif status == "pending_confirm":
-            print(f"上传待确认: {info['filename']} - {message}")
-            pending_record = append_pending_confirmation(info, run_id, message)
-            write_log(info, "pending_confirm", message, run_id, retries, response)
-            pending_files.append(pending_record)
-            pending_count += 1
-        else:
-            print(f"上传失败: {info['filename']} - {message}")
-            write_log(info, "failed", message, run_id, retries, response)
-            failed_info = {
-                "filename": info["filename"],
-                "full_path": info["full_path"],
-                "business_key": info["business_key"],
-                "message": message
-            }
-            failed_files.append(failed_info)
-            fail_count += 1
+        for future in as_completed(futures):
+            info = futures[future]
+            try:
+                status, response, retries = future.result()
+            except Exception as exc:
+                status, response, retries = "failed", {"message": str(exc)}, 0
+
+            message = response.get("message", "")
+
+            if status == "success":
+                print(f"上传成功: {info['filename']}")
+                write_log(info, "success", message, run_id, retries, response)
+                save_success_record(info, run_id, response, business_records, fingerprint_records)
+                success_count += 1
+            elif status == "pending_confirm":
+                print(f"上传待确认: {info['filename']} - {message}")
+                pending_record = append_pending_confirmation(info, run_id, message)
+                write_log(info, "pending_confirm", message, run_id, retries, response)
+                pending_files.append(pending_record)
+                pending_count += 1
+            else:
+                print(f"上传失败: {info['filename']} - {message}")
+                write_log(info, "failed", message, run_id, retries, response)
+                failed_info = {
+                    "filename": info["filename"],
+                    "full_path": info["full_path"],
+                    "business_key": info["business_key"],
+                    "message": message
+                }
+                failed_files.append(failed_info)
+                fail_count += 1
 
     stats = {
         "candidate_count": len(candidate_files),

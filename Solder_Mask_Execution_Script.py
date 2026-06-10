@@ -43,7 +43,6 @@ DAY_OFFSET = int(config["schedule"].get("day_offset", 1))
 EXECUTE_TIME = config["schedule"].get("execute_time", "00:10")
 
 DEDUPE_MODE = config["dedupe"].get("mode", "business_key_first")
-FALLBACK_MODE = config["dedupe"].get("fallback_mode", "filename_hash")
 KEEP_LATEST_IN_BATCH = config["dedupe"].get("keep_latest_in_batch", True)
 
 MAX_RETRIES = int(config["upload"].get("max_retries", 1))

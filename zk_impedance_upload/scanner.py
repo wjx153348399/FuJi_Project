@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from zk_impedance_upload.config import ScanConfig
+from zk_impedance_upload.config import ScanConfig, ScanTargetConfig
 from zk_impedance_upload.date_window import DateWindow, SHANGHAI_TZ
 
 
@@ -14,6 +14,8 @@ class CandidateFile:
     path: Path
     size: int
     modified_at: datetime
+    station_code: str = "UNKNOWN"
+    source_dir: str = ""
 
 
 @dataclass
@@ -27,8 +29,8 @@ def scan_files(root: str | Path, scan_config: ScanConfig, date_window: DateWindo
     root_path = Path(root)
     result = ScanResult()
 
-    for target_name in scan_config.target_dirs or []:
-        target_path = root_path / target_name
+    for target in _effective_targets(scan_config):
+        target_path = root_path / target.dir
         if not target_path.exists():
             result.missing_dirs.append(target_path)
             continue
@@ -36,9 +38,19 @@ def scan_files(root: str | Path, scan_config: ScanConfig, date_window: DateWindo
             result.failed_dirs.append(target_path)
             continue
 
-        _scan_directory(target_path, scan_config, date_window, result)
+        _scan_directory(target_path, scan_config, date_window, result, target)
 
     return result
+
+
+def _effective_targets(scan_config: ScanConfig) -> list[ScanTargetConfig]:
+    configured_targets = [target for target in scan_config.targets or [] if target.enabled]
+    if configured_targets:
+        return configured_targets
+    return [
+        ScanTargetConfig(station_code="UNKNOWN", dir=target_dir, enabled=True)
+        for target_dir in scan_config.target_dirs or []
+    ]
 
 
 def _scan_directory(
@@ -46,6 +58,7 @@ def _scan_directory(
     scan_config: ScanConfig,
     date_window: DateWindow,
     result: ScanResult,
+    target: ScanTargetConfig,
 ) -> None:
     try:
         entries = list(directory.iterdir())
@@ -58,7 +71,7 @@ def _scan_directory(
             if _is_excluded_dir(entry, scan_config):
                 continue
             if scan_config.recursive:
-                _scan_directory(entry, scan_config, date_window, result)
+                _scan_directory(entry, scan_config, date_window, result, target)
             continue
 
         if _is_candidate_file(entry, scan_config, date_window):
@@ -68,6 +81,8 @@ def _scan_directory(
                     path=entry,
                     size=stat.st_size,
                     modified_at=_mtime_to_datetime(stat.st_mtime),
+                    station_code=target.station_code,
+                    source_dir=target.dir,
                 )
             )
 

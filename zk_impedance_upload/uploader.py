@@ -23,6 +23,7 @@ def upload_file(
     url: str,
     timeout_seconds: int,
     retry_count: int,
+    station_code: str = "",
     session: Any | None = None,
 ) -> UploadResult:
     path = Path(file_path)
@@ -37,6 +38,7 @@ def upload_file(
                 response = http.post(
                     url,
                     files={"file": (path.name, file)},
+                    data={"station_code": station_code},
                     timeout=timeout_seconds,
                 )
         except RequestException as exc:

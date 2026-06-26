@@ -86,17 +86,20 @@ class DedupeTest(unittest.TestCase):
 
 def _parsed_file(path: Path, normalized_name: str, modified_at: str) -> ParsedFile:
     size = path.stat().st_size
+    fallback_key = f"FALLBACK|A10|OUTER|{normalized_name}|{size}|{modified_at}"
     return ParsedFile(
         path=path,
         filename=path.name,
         directory=path.parent,
         size=size,
         modified_at=modified_at,
+        station_code="A10",
+        source_dir="target",
         region="OUTER",
         normalized_name=normalized_name,
         business_key="",
-        fallback_key=f"FALLBACK|OUTER|{normalized_name}|{size}|{modified_at}",
-        dedupe_key=f"FALLBACK|OUTER|{normalized_name}|{size}|{modified_at}",
+        fallback_key=fallback_key,
+        dedupe_key=fallback_key,
     )
 
 

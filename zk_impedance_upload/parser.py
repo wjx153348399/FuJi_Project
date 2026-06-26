@@ -25,6 +25,8 @@ class ParsedFile:
     directory: Path
     size: int
     modified_at: str
+    station_code: str
+    source_dir: str
     region: str
     normalized_name: str
     business_key: str
@@ -36,7 +38,7 @@ def parse_candidate(candidate: CandidateFile) -> ParsedFile:
     region = identify_region(candidate.path)
     normalized_name = normalize_filename(candidate.path.name)
     modified_at = candidate.modified_at.strftime("%Y-%m-%d %H:%M:%S")
-    fallback_key = f"FALLBACK|{region}|{normalized_name}|{candidate.size}|{modified_at}"
+    fallback_key = f"FALLBACK|{candidate.station_code}|{region}|{normalized_name}|{candidate.size}|{modified_at}"
 
     return ParsedFile(
         path=candidate.path,
@@ -44,6 +46,8 @@ def parse_candidate(candidate: CandidateFile) -> ParsedFile:
         directory=candidate.path.parent,
         size=candidate.size,
         modified_at=modified_at,
+        station_code=candidate.station_code,
+        source_dir=candidate.source_dir,
         region=region,
         normalized_name=normalized_name,
         business_key="",

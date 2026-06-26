@@ -6,7 +6,15 @@ from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-from zk_impedance_upload.config import AppConfig, LogConfig, ScanConfig, ShareConfig, UploadConfig, WatchConfig
+from zk_impedance_upload.config import (
+    AppConfig,
+    LogConfig,
+    ScanConfig,
+    ScanTargetConfig,
+    ShareConfig,
+    UploadConfig,
+    WatchConfig,
+)
 from zk_impedance_upload.runner import run_upload_task
 from zk_impedance_upload.uploader import UploadResult
 
@@ -211,6 +219,32 @@ class RunnerTest(unittest.TestCase):
         self.assertIn("正在上传 1/1", joined)
         self.assertIn("上传任务汇总", joined)
 
+    def test_run_upload_task_writes_station_code_to_logs_and_history(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir) / "share"
+            log_dir = Path(tmp_dir) / "logs"
+            target_dir = root / "station-a" / "OUTER"
+            target_dir.mkdir(parents=True)
+            file_path = target_dir / "example.xlsx"
+            file_path.write_bytes(b"excel")
+            _set_mtime(file_path, "2026-06-13 10:00:00")
+
+            run_upload_task(
+                config=_config(root, log_dir, targets=[ScanTargetConfig(station_code="A10", dir="station-a")]),
+                now=datetime(2026, 6, 14, 8, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+                upload_func=_success_upload,
+            )
+
+            upload_entry = json.loads((log_dir / "upload_log_2026-06-14.jsonl").read_text(encoding="utf-8"))
+            history = json.loads((log_dir / "uploaded_file_fingerprints.json").read_text(encoding="utf-8"))
+            history_entry = next(iter(history.values()))
+
+        self.assertEqual(upload_entry["station_code"], "A10")
+        self.assertEqual(upload_entry["source_dir"], "station-a")
+        self.assertEqual(history_entry["station_code"], "A10")
+        self.assertEqual(history_entry["source_dir"], "station-a")
+        self.assertTrue(history_entry["fallback_key"].startswith("FALLBACK|A10|"))
+
 
 def _config(
     root: Path,
@@ -218,6 +252,7 @@ def _config(
     dry_run: bool = False,
     watch_enabled: bool = False,
     max_upload_files: Optional[int] = None,
+    targets: Optional[list[ScanTargetConfig]] = None,
 ) -> AppConfig:
     return AppConfig(
         share=ShareConfig(root=str(root), username="IT", password="FQCIT"),
@@ -230,7 +265,13 @@ def _config(
             timeout_seconds=60,
             retry_count=0,
         ),
-        scan=ScanConfig(target_dirs=["target"], extensions=[".xlsx"], exclude_prefixes=["~$"], exclude_dirs=[]),
+        scan=ScanConfig(
+            target_dirs=["target"],
+            targets=targets,
+            extensions=[".xlsx"],
+            exclude_prefixes=["~$"],
+            exclude_dirs=[],
+        ),
         watch=WatchConfig(enabled=watch_enabled),
     )
 

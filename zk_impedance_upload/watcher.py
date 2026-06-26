@@ -269,6 +269,9 @@ def _no_progress(_: str) -> None:
 
 
 def _iter_watch_targets(root_path: Path, scan_config: ScanConfig) -> list[Path]:
+    enabled_targets = [target for target in scan_config.targets or [] if target.enabled]
+    if enabled_targets:
+        return [root_path / target.dir for target in enabled_targets]
     if scan_config.target_dirs:
         return [root_path / target_dir for target_dir in scan_config.target_dirs]
     return [root_path]

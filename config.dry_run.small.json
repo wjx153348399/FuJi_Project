@@ -21,8 +21,12 @@
     "extensions": [".xls", ".xlsx"],
     "exclude_prefixes": ["~$"],
     "exclude_dirs": ["LOG", "log", "logs", "backup"],
-    "target_dirs": [
-      "ExampleStationDirectoryA"
+    "targets": [
+      {
+        "station_code": "A10",
+        "dir": "ExampleStationDirectoryA",
+        "enabled": true
+      }
     ]
   },
   "watch": {

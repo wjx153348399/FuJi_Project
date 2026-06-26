@@ -72,7 +72,7 @@ def main() -> int:
 
 
 def _run_basic(config, root: Path) -> None:
-    for target_name in config.scan.target_dirs:
+    for target_name in _target_dirs(config):
         target_path = root / target_name
         print(f"target=start path={target_path}", flush=True)
         print(
@@ -98,7 +98,7 @@ def _run_walk(config, root: Path, max_seconds: int) -> None:
     deadline = time.time() + max_seconds
     dir_count = 0
     file_count = 0
-    for target_name in config.scan.target_dirs:
+    for target_name in _target_dirs(config):
         target_path = root / target_name
         print(f"walk=target path={target_path}", flush=True)
         if not target_path.exists() or not target_path.is_dir():
@@ -124,6 +124,13 @@ def _run_walk(config, root: Path, max_seconds: int) -> None:
                 )
                 return
     print(f"walk=completed dirs={dir_count} files={file_count}", flush=True)
+
+
+def _target_dirs(config) -> list[str]:
+    enabled_targets = [target for target in config.scan.targets or [] if target.enabled]
+    if enabled_targets:
+        return [target.dir for target in enabled_targets]
+    return list(config.scan.target_dirs or [])
 
 
 def _run_fullscan(config, root: Path, date_window) -> None:

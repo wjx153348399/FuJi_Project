@@ -24,13 +24,14 @@ class FakeSession:
         self.outcomes = list(outcomes)
         self.calls = []
 
-    def post(self, url, files, timeout):
+    def post(self, url, files, data=None, timeout=None):
         file_name, file_obj = files["file"]
         self.calls.append(
             {
                 "url": url,
                 "file_name": file_name,
                 "file_bytes": file_obj.read(),
+                "data": data or {},
                 "timeout": timeout,
             }
         )
@@ -52,6 +53,7 @@ class UploaderTest(unittest.TestCase):
                 url="http://example.test/upload",
                 timeout_seconds=60,
                 retry_count=0,
+                station_code="A10",
                 session=session,
             )
 
@@ -61,6 +63,7 @@ class UploaderTest(unittest.TestCase):
         self.assertEqual(result.retry_count, 0)
         self.assertEqual(session.calls[0]["file_name"], "阻抗.xlsx")
         self.assertEqual(session.calls[0]["file_bytes"], b"excel")
+        self.assertEqual(session.calls[0]["data"], {"station_code": "A10"})
         self.assertEqual(session.calls[0]["timeout"], 60)
 
     def test_retries_request_exception_then_succeeds(self):

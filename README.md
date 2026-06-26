@@ -103,6 +103,33 @@ python run_watcher.py --config config.json
 - `scan`：扫描目标目录、扩展名、排除目录、临时文件前缀。
 - `watch`：监听功能开关、监听模式、轮询间隔、防抖窗口。
 
+### 工站目录绑定
+
+第一阶段通过 `scan.targets` 维护“工站代码 -> 目录位置”的绑定关系：
+
+```json
+{
+  "scan": {
+    "targets": [
+      {
+        "station_code": "A10",
+        "dir": "ExampleStationDirectoryA",
+        "enabled": true
+      },
+      {
+        "station_code": "A50",
+        "dir": "ExampleStationDirectoryB",
+        "enabled": true
+      }
+    ]
+  }
+}
+```
+
+`dir` 是相对 `share.root` 的目录路径。程序扫描到该目录下的 Excel 文件后，会自动把对应的 `station_code` 写入上传请求、上传日志和历史成功记录。
+
+兼容旧配置 `scan.target_dirs`；如果同时配置了 `scan.targets`，程序优先使用 `scan.targets`。
+
 监听相关配置位于 `watch` 节点，例如：
 
 ```json

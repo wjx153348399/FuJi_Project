@@ -200,6 +200,7 @@ def _real_upload_func(config: AppConfig) -> UploadFunc:
             url=config.upload.url,
             timeout_seconds=config.upload.timeout_seconds,
             retry_count=config.upload.retry_count,
+            station_code=parsed_file.station_code,
         )
 
     return _upload
@@ -224,6 +225,8 @@ def _base_entry(run_id: str, parsed_file: ParsedFile) -> dict[str, object]:
         "directory": str(parsed_file.directory),
         "file_size": parsed_file.size,
         "file_mtime": parsed_file.modified_at,
+        "station_code": parsed_file.station_code,
+        "source_dir": parsed_file.source_dir,
         "region": parsed_file.region,
         "normalized_name": parsed_file.normalized_name,
         "business_key": parsed_file.business_key,

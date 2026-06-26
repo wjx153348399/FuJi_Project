@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from zk_impedance_upload.config import ScanConfig
+from zk_impedance_upload.config import ScanConfig, ScanTargetConfig
 from zk_impedance_upload.date_window import build_date_window
 from zk_impedance_upload.scanner import ScanResult, scan_files
 
@@ -110,6 +110,38 @@ class ScannerTest(unittest.TestCase):
         self.assertEqual(result.candidates, [])
         self.assertEqual(result.missing_dirs, [])
         self.assertEqual(result.failed_dirs, [])
+
+    def test_scan_targets_bind_station_code_to_candidate_files(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            enabled_dir = root / "station-a" / "OUTER"
+            disabled_dir = root / "station-b" / "OUTER"
+            enabled_dir.mkdir(parents=True)
+            disabled_dir.mkdir(parents=True)
+            enabled_file = enabled_dir / "enabled.xlsx"
+            disabled_file = disabled_dir / "disabled.xlsx"
+            enabled_file.write_text("x", encoding="utf-8")
+            disabled_file.write_text("x", encoding="utf-8")
+            _set_mtime(enabled_file, "2026-06-13 10:00:00")
+            _set_mtime(disabled_file, "2026-06-13 10:00:00")
+
+            result = scan_files(
+                root=root,
+                scan_config=ScanConfig(
+                    targets=[
+                        ScanTargetConfig(station_code="A10", dir="station-a"),
+                        ScanTargetConfig(station_code="A50", dir="station-b", enabled=False),
+                    ],
+                    recursive=True,
+                ),
+                date_window=build_date_window(
+                    now=datetime(2026, 6, 14, 8, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+                ),
+            )
+
+        self.assertEqual([item.path.name for item in result.candidates], ["enabled.xlsx"])
+        self.assertEqual(result.candidates[0].station_code, "A10")
+        self.assertEqual(result.candidates[0].source_dir, "station-a")
 
 
 def _set_mtime(path: Path, timestamp: str) -> None:

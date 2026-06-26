@@ -32,18 +32,27 @@ class UploadConfig:
 
 
 @dataclass(frozen=True)
+class ScanTargetConfig:
+    station_code: str
+    dir: str
+    enabled: bool = True
+
+
+@dataclass(frozen=True)
 class ScanConfig:
     recursive: bool = True
     extensions: list[str] | None = None
     exclude_prefixes: list[str] | None = None
     exclude_dirs: list[str] | None = None
     target_dirs: list[str] | None = None
+    targets: list[ScanTargetConfig] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "extensions", self.extensions or [".xls", ".xlsx"])
         object.__setattr__(self, "exclude_prefixes", self.exclude_prefixes or ["~$"])
         object.__setattr__(self, "exclude_dirs", self.exclude_dirs or [])
         object.__setattr__(self, "target_dirs", self.target_dirs or [])
+        object.__setattr__(self, "targets", self.targets or [])
 
 
 @dataclass(frozen=True)
@@ -107,6 +116,7 @@ def parse_config(raw: dict[str, Any]) -> AppConfig:
             exclude_prefixes=_optional_str_list(scan, "exclude_prefixes", ["~$"]),
             exclude_dirs=_optional_str_list(scan, "exclude_dirs", []),
             target_dirs=_optional_str_list(scan, "target_dirs", []),
+            targets=_optional_scan_targets(scan),
         ),
         watch=WatchConfig(
             enabled=_optional_bool(watch, "enabled", False),
@@ -122,6 +132,46 @@ def _section(raw: dict[str, Any], name: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ConfigError(f"配置项 {name} 必须是对象")
     return value
+
+
+def _optional_scan_targets(section: dict[str, Any]) -> list[ScanTargetConfig]:
+    value = section.get("targets", [])
+    if not isinstance(value, list):
+        raise ConfigError("scan.targets must be a list")
+
+    targets: list[ScanTargetConfig] = []
+    seen_dirs: set[str] = set()
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise ConfigError(f"scan.targets[{index}] must be an object")
+
+        station_code = item.get("station_code")
+        if not isinstance(station_code, str) or not station_code.strip():
+            raise ConfigError(f"scan.targets[{index}].station_code is required")
+
+        target_dir = item.get("dir")
+        if not isinstance(target_dir, str) or not target_dir.strip():
+            raise ConfigError(f"scan.targets[{index}].dir is required")
+
+        enabled = item.get("enabled", True)
+        if not isinstance(enabled, bool):
+            raise ConfigError(f"scan.targets[{index}].enabled must be a boolean")
+
+        normalized_dir = target_dir.strip().replace("/", "\\").rstrip("\\")
+        lookup_key = normalized_dir.lower()
+        if lookup_key in seen_dirs:
+            raise ConfigError(f"scan.targets contains duplicate dir: {normalized_dir}")
+        seen_dirs.add(lookup_key)
+
+        targets.append(
+            ScanTargetConfig(
+                station_code=station_code.strip(),
+                dir=normalized_dir,
+                enabled=enabled,
+            )
+        )
+
+    return targets
 
 
 def _required_str(section: dict[str, Any], dotted_name: str) -> str:

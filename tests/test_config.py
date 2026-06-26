@@ -123,6 +123,57 @@ class ConfigTest(unittest.TestCase):
             with self.assertRaisesRegex(ConfigError, "poll_interval_seconds"):
                 load_config(config_path)
 
+    def test_loads_station_directory_targets(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config_path = Path(tmp_dir) / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "share": {"root": "\\\\server\\share", "username": "IT", "password": "FQCIT"},
+                        "log": {"dir": "\\\\server\\log"},
+                        "upload": {"url": "http://example.test/upload"},
+                        "scan": {
+                            "targets": [
+                                {"station_code": "A10", "dir": "station-a"},
+                                {"station_code": "A50", "dir": "station-b", "enabled": False},
+                            ]
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            config = load_config(config_path)
+
+        self.assertEqual(config.scan.targets[0].station_code, "A10")
+        self.assertEqual(config.scan.targets[0].dir, "station-a")
+        self.assertTrue(config.scan.targets[0].enabled)
+        self.assertEqual(config.scan.targets[1].station_code, "A50")
+        self.assertFalse(config.scan.targets[1].enabled)
+
+    def test_duplicate_station_target_dir_raises_clear_error(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config_path = Path(tmp_dir) / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "share": {"root": "\\\\server\\share", "username": "IT", "password": "FQCIT"},
+                        "log": {"dir": "\\\\server\\log"},
+                        "upload": {"url": "http://example.test/upload"},
+                        "scan": {
+                            "targets": [
+                                {"station_code": "A10", "dir": "station-a"},
+                                {"station_code": "A50", "dir": "station-a"},
+                            ]
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ConfigError, "duplicate dir"):
+                load_config(config_path)
+
 
 if __name__ == "__main__":
     unittest.main()

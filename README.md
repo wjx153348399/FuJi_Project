@@ -128,6 +128,19 @@ python run_watcher.py --config config.json
 
 `dir` 是相对 `share.root` 的目录路径。程序扫描到该目录下的 Excel 文件后，会自动把对应的 `station_code` 写入上传请求、上传日志和历史成功记录。
 
+上传给后端的字段名可以通过 `upload.station_field_name` 配置，默认值为 `station_code`：
+
+```json
+{
+  "upload": {
+    "send_station_code": true,
+    "station_field_name": "station_code"
+  }
+}
+```
+
+如果后端字段名后续确定为 `stationCode` 或其他名称，只需要修改 `station_field_name`。如果后端暂时不接收工站字段，可以先设置 `send_station_code=false`，本地日志和去重仍会保留 `station_code`。
+
 兼容旧配置 `scan.target_dirs`；如果同时配置了 `scan.targets`，程序优先使用 `scan.targets`。
 
 监听相关配置位于 `watch` 节点，例如：

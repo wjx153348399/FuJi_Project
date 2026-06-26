@@ -201,6 +201,8 @@ def _real_upload_func(config: AppConfig) -> UploadFunc:
             timeout_seconds=config.upload.timeout_seconds,
             retry_count=config.upload.retry_count,
             station_code=parsed_file.station_code,
+            send_station_code=config.upload.send_station_code,
+            station_field_name=config.upload.station_field_name,
         )
 
     return _upload

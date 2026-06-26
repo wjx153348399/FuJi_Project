@@ -14,7 +14,9 @@
     "max_upload_files": null,
     "dry_run": false,
     "timeout_seconds": 300,
-    "retry_count": 2
+    "retry_count": 2,
+    "send_station_code": true,
+    "station_field_name": "station_code"
   },
   "scan": {
     "recursive": true,

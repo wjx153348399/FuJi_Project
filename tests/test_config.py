@@ -28,6 +28,8 @@ class ConfigTest(unittest.TestCase):
                             "dry_run": False,
                             "timeout_seconds": 60,
                             "retry_count": 2,
+                            "send_station_code": True,
+                            "station_field_name": "stationCode",
                         },
                         "scan": {
                             "recursive": True,
@@ -56,6 +58,8 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(config.share.root, "\\\\10.0.8.252\\ProductionFieldFile 现场公共盘\\阻抗")
         self.assertEqual(config.log.dir, "\\\\10.0.8.252\\File\\ZK_LOG")
         self.assertEqual(config.upload.day_offset, 1)
+        self.assertTrue(config.upload.send_station_code)
+        self.assertEqual(config.upload.station_field_name, "stationCode")
         self.assertEqual(config.scan.extensions, [".xls", ".xlsx"])
         self.assertIn("ผลิตภัณฑ์สำเร็จรูปCP-阻抗", config.scan.target_dirs)
         self.assertFalse(config.watch.enabled)

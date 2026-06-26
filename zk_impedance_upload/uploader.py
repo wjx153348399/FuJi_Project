@@ -24,10 +24,17 @@ def upload_file(
     timeout_seconds: int,
     retry_count: int,
     station_code: str = "",
+    send_station_code: bool = True,
+    station_field_name: str = "station_code",
     session: Any | None = None,
 ) -> UploadResult:
     path = Path(file_path)
     http = session or requests.Session()
+    data = _build_upload_data(
+        station_code=station_code,
+        send_station_code=send_station_code,
+        station_field_name=station_field_name,
+    )
 
     attempts = retry_count + 1
     last_error = ""
@@ -38,7 +45,7 @@ def upload_file(
                 response = http.post(
                     url,
                     files={"file": (path.name, file)},
-                    data={"station_code": station_code},
+                    data=data,
                     timeout=timeout_seconds,
                 )
         except RequestException as exc:
@@ -105,6 +112,19 @@ def _parse_response_json(response: Any) -> dict[str, Any]:
     if isinstance(parsed, dict):
         return parsed
     return {"data": parsed}
+
+
+def _build_upload_data(
+    station_code: str,
+    send_station_code: bool,
+    station_field_name: str,
+) -> dict[str, str]:
+    if not send_station_code:
+        return {}
+    field_name = station_field_name.strip()
+    if not field_name:
+        return {}
+    return {field_name: station_code}
 
 
 def _business_error_message(response: dict[str, Any], response_text: str) -> str:

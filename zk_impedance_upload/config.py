@@ -29,6 +29,8 @@ class UploadConfig:
     dry_run: bool = False
     timeout_seconds: int = 300
     retry_count: int = 2
+    send_station_code: bool = True
+    station_field_name: str = "station_code"
 
 
 @dataclass(frozen=True)
@@ -109,6 +111,8 @@ def parse_config(raw: dict[str, Any]) -> AppConfig:
             dry_run=_optional_bool(upload, "dry_run", False),
             timeout_seconds=_optional_int(upload, "timeout_seconds", 300),
             retry_count=_optional_int(upload, "retry_count", 2),
+            send_station_code=_optional_bool(upload, "send_station_code", True),
+            station_field_name=_optional_str(upload, "station_field_name", "station_code"),
         ),
         scan=ScanConfig(
             recursive=_optional_bool(scan, "recursive", True),

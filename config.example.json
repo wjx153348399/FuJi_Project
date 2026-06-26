@@ -1,0 +1,35 @@
+{
+  "share": {
+    "root": "\\\\SERVER\\Share\\Impedance",
+    "username": "YOUR_USERNAME",
+    "password": "YOUR_PASSWORD"
+  },
+  "log": {
+    "dir": "\\\\SERVER\\Share\\ZK_LOG"
+  },
+  "upload": {
+    "url": "http://YOUR_SERVER/service-qms/file/importImpedanceData",
+    "schedule_time": "08:00",
+    "day_offset": 1,
+    "max_upload_files": null,
+    "dry_run": false,
+    "timeout_seconds": 300,
+    "retry_count": 2
+  },
+  "scan": {
+    "recursive": true,
+    "extensions": [".xls", ".xlsx"],
+    "exclude_prefixes": ["~$"],
+    "exclude_dirs": ["LOG", "log", "logs", "backup"],
+    "target_dirs": [
+      "ExampleStationDirectoryA",
+      "ExampleStationDirectoryB"
+    ]
+  },
+  "watch": {
+    "enabled": true,
+    "notice_mode": "log_and_daily_summary",
+    "poll_interval_seconds": 5,
+    "debounce_seconds": 5
+  }
+}

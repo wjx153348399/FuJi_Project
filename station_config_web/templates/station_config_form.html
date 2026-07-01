@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <title>{% if mode == "new" %}新增{% else %}编辑{% endif %}工站目录配置</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <main class="page narrow">
+      <header class="toolbar">
+        <div>
+          <h1>{% if mode == "new" %}新增配置{% else %}编辑配置 #{{ form.id }}{% endif %}</h1>
+          <p>共享盘根目录：{{ config.share.root }}</p>
+        </div>
+        <a class="small-link" href="/station-config">返回列表</a>
+      </header>
+
+      {% if error %}
+        <section class="notice error">{{ error }}</section>
+      {% endif %}
+
+      <section class="form-panel">
+        <form method="post" action="{% if mode == 'new' %}/station-config/new{% else %}/station-config/{{ form.id }}/edit{% endif %}">
+          <label>
+            <span>工站代码</span>
+            <input name="station_code" value="{{ form.station_code }}" placeholder="暂不确定时可填 UNKNOWN">
+          </label>
+
+          <label>
+            <span>工站名称</span>
+            <input name="station_name" value="{{ form.station_name }}" placeholder="例如 LXD / AFX / OUTER">
+          </label>
+
+          <label>
+            <span>相对目录路径</span>
+            <textarea name="directory_path" rows="4" required placeholder="只填写共享盘根目录下面的相对路径，不填写 \\server\share 或 C:\">{{ form.directory_path }}</textarea>
+          </label>
+
+          <div class="form-grid">
+            <label>
+              <span>状态</span>
+              <select name="enabled">
+                <option value="1" {% if form.enabled == "1" %}selected{% endif %}>启用</option>
+                <option value="0" {% if form.enabled == "0" %}selected{% endif %}>停用</option>
+              </select>
+            </label>
+
+            <label>
+              <span>排序</span>
+              <input name="sort_order" value="{{ form.sort_order }}" inputmode="numeric">
+            </label>
+          </div>
+
+          <label>
+            <span>备注</span>
+            <textarea name="remark" rows="3" placeholder="用途、来源、确认人等">{{ form.remark }}</textarea>
+          </label>
+
+          <div class="form-actions">
+            <button type="submit">保存</button>
+            <a class="small-link" href="/station-config">取消</a>
+          </div>
+        </form>
+      </section>
+    </main>
+  </body>
+</html>

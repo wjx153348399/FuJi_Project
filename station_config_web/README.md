@@ -2,13 +2,18 @@
 
 该工具用于维护 SQL Server 表 `dbo.station_directory_config`，让用户可以自行配置“目录 -> 工站”的绑定关系。
 
-第一阶段只提供 Web 工具骨架和配置读取能力，后续会逐步加入：
+当前已支持：
 
 - 配置列表页
 - 新增和编辑
 - 启用和停用
 - 目录存在性检测
-- 简单登录
+
+暂未完成：
+
+- 简单登录和操作权限控制
+
+部署到服务器前，建议先完成登录保护，避免同网段用户误操作配置。
 
 ## 本地配置
 
@@ -33,4 +38,3 @@ python -m station_config_web.app
 ```powershell
 uvicorn station_config_web.app:app --host 0.0.0.0 --port 8088
 ```
-

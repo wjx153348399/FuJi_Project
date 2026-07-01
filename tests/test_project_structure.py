@@ -46,11 +46,13 @@ class ProjectStructureTest(unittest.TestCase):
         with patch("zk_impedance_upload.cli.load_config") as load_config:
             with patch("zk_impedance_upload.cli.ensure_share_access") as ensure_access:
                 with patch("zk_impedance_upload.cli.LogStore") as log_store:
-                    exit_code = main(["--config", "config.example.json", "--check-config"])
+                    with patch("zk_impedance_upload.cli.build_effective_scan_config") as build_effective:
+                        exit_code = main(["--config", "config.example.json", "--check-config"])
 
         self.assertEqual(exit_code, 0)
         ensure_access.assert_called_once_with(load_config.return_value)
         log_store.assert_called_once_with(load_config.return_value.log.dir)
+        build_effective.assert_called_once_with(load_config.return_value)
 
     def test_cli_runs_upload_task_when_not_checking_config(self):
         stdout = StringIO()

@@ -11,6 +11,7 @@ from zk_impedance_upload.config import AppConfig, ScanConfig
 from zk_impedance_upload.date_window import SHANGHAI_TZ
 from zk_impedance_upload.log_store import LogStore
 from zk_impedance_upload.share_auth import ensure_share_access
+from zk_impedance_upload.station_config import StationTargetRepository, build_effective_scan_config
 
 
 @dataclass(frozen=True)
@@ -198,6 +199,7 @@ def run_watch_service(
     now_func: Callable[[], datetime] | None = None,
     share_access_func: Callable[[AppConfig], None] | None = None,
     progress_func: Callable[[str], None] | None = None,
+    station_repository: StationTargetRepository | None = None,
 ) -> int:
     sleep = sleep_func or time.sleep
     get_now = now_func or _current_time
@@ -210,8 +212,16 @@ def run_watch_service(
     progress("正在检查日志目录...")
     log_store.ensure_ready()
     progress("日志目录检查完成")
+    effective_scan = build_effective_scan_config(config, station_repository)
+    progress(
+        "工站目录配置加载完成: "
+        f"source={effective_scan.effective_source}, "
+        f"targets={effective_scan.target_count}"
+    )
+    if effective_scan.fallback_reason:
+        progress(f"工站目录配置已回退到 JSON: {effective_scan.fallback_reason}")
     progress("正在采集初始监听快照...")
-    previous = collect_watch_snapshot(config.share.root, config.scan)
+    previous = collect_watch_snapshot(config.share.root, effective_scan.scan)
     progress(
         "初始监听快照完成: "
         f"entries={len(previous.entries)}, "
@@ -226,7 +236,7 @@ def run_watch_service(
     while max_iterations is None or iteration < max_iterations:
         sleep(config.watch.poll_interval_seconds)
         try:
-            current = collect_watch_snapshot(config.share.root, config.scan)
+            current = collect_watch_snapshot(config.share.root, effective_scan.scan)
             current_time = get_now()
             _log_snapshot_state(log_store, current, current_time)
             events = debouncer.filter(diff_watch_snapshots(previous, current))

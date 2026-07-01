@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -58,6 +58,28 @@ class ScanConfig:
 
 
 @dataclass(frozen=True)
+class StationDbConfig:
+    enabled: bool = False
+    driver: str = "sqlserver"
+    odbc_driver: str = "ODBC Driver 17 for SQL Server"
+    host: str = ""
+    port: int = 1433
+    database: str = ""
+    username: str = ""
+    password: str = ""
+    table: str = "station_directory_config"
+    connect_timeout_seconds: int = 5
+    query_timeout_seconds: int = 10
+
+
+@dataclass(frozen=True)
+class StationConfig:
+    source: str = "json"
+    on_db_error: str = "raise"
+    db: StationDbConfig = field(default_factory=StationDbConfig)
+
+
+@dataclass(frozen=True)
 class WatchConfig:
     enabled: bool = False
     notice_mode: str = "log_and_daily_summary"
@@ -72,6 +94,7 @@ class AppConfig:
     upload: UploadConfig
     scan: ScanConfig
     watch: WatchConfig
+    station_config: StationConfig = field(default_factory=StationConfig)
 
 
 def load_config(path: str | Path) -> AppConfig:
@@ -95,6 +118,9 @@ def parse_config(raw: dict[str, Any]) -> AppConfig:
     watch = raw.get("watch", {})
     if not isinstance(watch, dict):
         raise ConfigError("配置项 watch 必须是对象")
+    station_config = raw.get("station_config", {})
+    if not isinstance(station_config, dict):
+        raise ConfigError("配置项 station_config 必须是对象")
 
     return AppConfig(
         share=ShareConfig(
@@ -128,6 +154,7 @@ def parse_config(raw: dict[str, Any]) -> AppConfig:
             poll_interval_seconds=_optional_positive_int(watch, "poll_interval_seconds", 5),
             debounce_seconds=_optional_positive_int(watch, "debounce_seconds", 5),
         ),
+        station_config=_parse_station_config(station_config),
     )
 
 
@@ -178,6 +205,38 @@ def _optional_scan_targets(section: dict[str, Any]) -> list[ScanTargetConfig]:
     return targets
 
 
+def _parse_station_config(section: dict[str, Any]) -> StationConfig:
+    source = _optional_str(section, "source", "json")
+    if source not in {"json", "db", "db_then_json"}:
+        raise ConfigError("station_config.source must be one of: json, db, db_then_json")
+
+    on_db_error = _optional_str(section, "on_db_error", "raise")
+    if on_db_error not in {"raise", "fallback_to_json"}:
+        raise ConfigError("station_config.on_db_error must be one of: raise, fallback_to_json")
+
+    db = section.get("db", {})
+    if not isinstance(db, dict):
+        raise ConfigError("配置项 station_config.db 必须是对象")
+
+    return StationConfig(
+        source=source,
+        on_db_error=on_db_error,
+        db=StationDbConfig(
+            enabled=_optional_bool(db, "enabled", False),
+            driver=_optional_str(db, "driver", "sqlserver"),
+            odbc_driver=_optional_str(db, "odbc_driver", "ODBC Driver 17 for SQL Server"),
+            host=_optional_str_allow_empty(db, "host", ""),
+            port=_optional_positive_int(db, "port", 1433),
+            database=_optional_str_allow_empty(db, "database", ""),
+            username=_optional_str_allow_empty(db, "username", ""),
+            password=_optional_str_allow_empty(db, "password", ""),
+            table=_optional_str(db, "table", "station_directory_config"),
+            connect_timeout_seconds=_optional_positive_int(db, "connect_timeout_seconds", 5),
+            query_timeout_seconds=_optional_positive_int(db, "query_timeout_seconds", 10),
+        ),
+    )
+
+
 def _required_str(section: dict[str, Any], dotted_name: str) -> str:
     key = dotted_name.rsplit(".", 1)[-1]
     value = section.get(key)
@@ -190,6 +249,13 @@ def _optional_str(section: dict[str, Any], key: str, default: str) -> str:
     value = section.get(key, default)
     if not isinstance(value, str) or not value.strip():
         raise ConfigError(f"配置项 {key} 必须是非空字符串")
+    return value
+
+
+def _optional_str_allow_empty(section: dict[str, Any], key: str, default: str) -> str:
+    value = section.get(key, default)
+    if not isinstance(value, str):
+        raise ConfigError(f"配置项 {key} 必须是字符串")
     return value
 
 

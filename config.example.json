@@ -36,6 +36,23 @@
       }
     ]
   },
+  "station_config": {
+    "source": "json",
+    "on_db_error": "fallback_to_json",
+    "db": {
+      "enabled": false,
+      "driver": "sqlserver",
+      "odbc_driver": "ODBC Driver 17 for SQL Server",
+      "host": "127.0.0.1",
+      "port": 1433,
+      "database": "YOUR_DATABASE",
+      "username": "YOUR_DB_USERNAME",
+      "password": "YOUR_DB_PASSWORD",
+      "table": "dbo.station_directory_config",
+      "connect_timeout_seconds": 5,
+      "query_timeout_seconds": 10
+    }
+  },
   "watch": {
     "enabled": true,
     "notice_mode": "log_and_daily_summary",

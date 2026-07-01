@@ -11,6 +11,7 @@ from zk_impedance_upload.fingerprint import HashCache, calculate_sha256, split_h
 from zk_impedance_upload.log_store import LogStore
 from zk_impedance_upload.parser import parse_candidate
 from zk_impedance_upload.scanner import scan_files
+from zk_impedance_upload.station_config import build_effective_scan_config
 
 
 def main() -> int:
@@ -41,6 +42,16 @@ def main() -> int:
     print("stage=config_ok", flush=True)
     LogStore(config.log.dir).ensure_ready()
     print("stage=log_ok", flush=True)
+    effective_scan = build_effective_scan_config(config)
+    print(
+        "stage=station_config_ok "
+        f"requested_source={effective_scan.requested_source} "
+        f"effective_source={effective_scan.effective_source} "
+        f"target_count={effective_scan.target_count}",
+        flush=True,
+    )
+    if effective_scan.fallback_reason:
+        print(f"station_config=fallback reason={effective_scan.fallback_reason}", flush=True)
 
     date_window = build_date_window(day_offset=config.upload.day_offset)
     print(
@@ -53,26 +64,26 @@ def main() -> int:
     print(f"stage=root exists={root.exists()} is_dir={root.is_dir()} path={root}", flush=True)
 
     if args.mode == "basic":
-        _run_basic(config, root)
+        _run_basic(config, root, effective_scan.scan)
     elif args.mode == "walk":
-        _run_walk(config, root, max_seconds=args.max_seconds)
+        _run_walk(config, root, effective_scan.scan, max_seconds=args.max_seconds)
     elif args.mode == "pipeline":
-        _run_pipeline(config, root, date_window)
+        _run_pipeline(config, root, date_window, effective_scan.scan)
     elif args.mode == "list-candidates":
-        _run_list_candidates(config, root, date_window, limit=args.limit)
+        _run_list_candidates(config, root, date_window, effective_scan.scan, limit=args.limit)
     elif args.mode == "group-by-dir":
-        _run_group_by_dir(config, root, date_window, limit=args.limit)
+        _run_group_by_dir(config, root, date_window, effective_scan.scan, limit=args.limit)
     elif args.mode == "hash-sample":
-        _run_hash_sample(config, root, date_window, limit=args.limit)
+        _run_hash_sample(config, root, date_window, effective_scan.scan, limit=args.limit)
     else:
-        _run_fullscan(config, root, date_window)
+        _run_fullscan(config, root, date_window, effective_scan.scan)
 
     print(f"stage=done elapsed={time.time() - start:.2f}s mode={args.mode}", flush=True)
     return 0
 
 
-def _run_basic(config, root: Path) -> None:
-    for target_name in _target_dirs(config):
+def _run_basic(config, root: Path, scan_config) -> None:
+    for target_name in _target_dirs(scan_config):
         target_path = root / target_name
         print(f"target=start path={target_path}", flush=True)
         print(
@@ -94,11 +105,11 @@ def _run_basic(config, root: Path) -> None:
             print(f"target=list_error type={type(exc).__name__} error={exc}", flush=True)
 
 
-def _run_walk(config, root: Path, max_seconds: int) -> None:
+def _run_walk(config, root: Path, scan_config, max_seconds: int) -> None:
     deadline = time.time() + max_seconds
     dir_count = 0
     file_count = 0
-    for target_name in _target_dirs(config):
+    for target_name in _target_dirs(scan_config):
         target_path = root / target_name
         print(f"walk=target path={target_path}", flush=True)
         if not target_path.exists() or not target_path.is_dir():
@@ -115,7 +126,7 @@ def _run_walk(config, root: Path, max_seconds: int) -> None:
             dir_names[:] = [
                 name
                 for name in dir_names
-                if name not in set(config.scan.exclude_dirs or [])
+                if name not in set(scan_config.exclude_dirs or [])
             ]
             if time.time() >= deadline:
                 print(
@@ -126,16 +137,16 @@ def _run_walk(config, root: Path, max_seconds: int) -> None:
     print(f"walk=completed dirs={dir_count} files={file_count}", flush=True)
 
 
-def _target_dirs(config) -> list[str]:
-    enabled_targets = [target for target in config.scan.targets or [] if target.enabled]
+def _target_dirs(scan_config) -> list[str]:
+    enabled_targets = [target for target in scan_config.targets or [] if target.enabled]
     if enabled_targets:
         return [target.dir for target in enabled_targets]
-    return list(config.scan.target_dirs or [])
+    return list(scan_config.target_dirs or [])
 
 
-def _run_fullscan(config, root: Path, date_window) -> None:
+def _run_fullscan(config, root: Path, date_window, scan_config) -> None:
     scan_start = time.time()
-    result = scan_files(root, config.scan, date_window)
+    result = scan_files(root, scan_config, date_window)
     print(
         "fullscan=result "
         f"candidates={len(result.candidates)} "
@@ -148,9 +159,9 @@ def _run_fullscan(config, root: Path, date_window) -> None:
         print(f"fullscan=first_candidate path={result.candidates[0].path}", flush=True)
 
 
-def _run_pipeline(config, root: Path, date_window) -> None:
+def _run_pipeline(config, root: Path, date_window, scan_config) -> None:
     t0 = time.time()
-    scan_result = scan_files(root, config.scan, date_window)
+    scan_result = scan_files(root, scan_config, date_window)
     print(
         f"pipeline=scan candidates={len(scan_result.candidates)} "
         f"missing_dirs={len(scan_result.missing_dirs)} "
@@ -187,8 +198,8 @@ def _run_pipeline(config, root: Path, date_window) -> None:
     )
 
 
-def _run_hash_sample(config, root: Path, date_window, limit: int) -> None:
-    scan_result = scan_files(root, config.scan, date_window)
+def _run_hash_sample(config, root: Path, date_window, scan_config, limit: int) -> None:
+    scan_result = scan_files(root, scan_config, date_window)
     candidates = sorted(scan_result.candidates, key=lambda item: item.size, reverse=True)
     print(f"hash_sample=candidates total={len(candidates)}", flush=True)
     for candidate in candidates[:limit]:
@@ -202,8 +213,8 @@ def _run_hash_sample(config, root: Path, date_window, limit: int) -> None:
         )
 
 
-def _run_list_candidates(config, root: Path, date_window, limit: int) -> None:
-    scan_result = scan_files(root, config.scan, date_window)
+def _run_list_candidates(config, root: Path, date_window, scan_config, limit: int) -> None:
+    scan_result = scan_files(root, scan_config, date_window)
     candidates = sorted(scan_result.candidates, key=lambda item: item.size, reverse=True)
     print(f"list_candidates=total {len(candidates)}", flush=True)
     for index, candidate in enumerate(candidates[:limit], start=1):
@@ -214,8 +225,8 @@ def _run_list_candidates(config, root: Path, date_window, limit: int) -> None:
         )
 
 
-def _run_group_by_dir(config, root: Path, date_window, limit: int) -> None:
-    scan_result = scan_files(root, config.scan, date_window)
+def _run_group_by_dir(config, root: Path, date_window, scan_config, limit: int) -> None:
+    scan_result = scan_files(root, scan_config, date_window)
     grouped: dict[str, tuple[int, int]] = {}
     for candidate in scan_result.candidates:
         key = str(candidate.path.parent)

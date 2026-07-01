@@ -101,6 +101,7 @@ python run_watcher.py --config config.json
 - `log`：日志目录。
 - `upload`：上传地址、目标日期偏移、超时、重试、dry-run。
 - `scan`：扫描目标目录、扩展名、排除目录、临时文件前缀。
+- `station_config`：工站目录绑定配置来源，可使用 JSON 或 SQL Server。
 - `watch`：监听功能开关、监听模式、轮询间隔、防抖窗口。
 
 ### 工站目录绑定
@@ -142,6 +143,40 @@ python run_watcher.py --config config.json
 如果后端字段名后续确定为 `stationCode` 或其他名称，只需要修改 `station_field_name`。如果后端暂时不接收工站字段，可以先设置 `send_station_code=false`，本地日志和去重仍会保留 `station_code`。
 
 兼容旧配置 `scan.target_dirs`；如果同时配置了 `scan.targets`，程序优先使用 `scan.targets`。
+
+第二阶段支持从 SQL Server 配置表读取工站目录绑定关系。默认仍使用 JSON：
+
+```json
+{
+  "station_config": {
+    "source": "json"
+  }
+}
+```
+
+上线初期推荐使用数据库优先、JSON 兜底：
+
+```json
+{
+  "station_config": {
+    "source": "db_then_json",
+    "on_db_error": "fallback_to_json",
+    "db": {
+      "enabled": true,
+      "driver": "sqlserver",
+      "odbc_driver": "ODBC Driver 17 for SQL Server",
+      "host": "127.0.0.1",
+      "port": 1433,
+      "database": "YOUR_DATABASE",
+      "username": "YOUR_DB_USERNAME",
+      "password": "YOUR_DB_PASSWORD",
+      "table": "dbo.station_directory_config"
+    }
+  }
+}
+```
+
+建表脚本见 `docs/sql/create_station_directory_config.sql`，示例数据见 `docs/sql/seed_station_directory_config.sql`。
 
 监听相关配置位于 `watch` 节点，例如：
 
@@ -190,6 +225,7 @@ zk_impedance_upload/
   runner.py        串联配置、扫描、解析、去重、上传和日志记录
   scanner.py       目标目录扫描、扩展名过滤、临时文件过滤、日期窗口过滤
   share_auth.py    Windows 共享盘访问检查和 net use 登录
+  station_config.py 工站目录配置来源解析、SQL Server 读取、JSON 回退
   uploader.py      HTTP multipart 上传、超时、重试、结果封装
   watcher.py       监听快照采集、事件差异、防抖、监听日志和监听汇总
 run_upload.py      上传任务入口

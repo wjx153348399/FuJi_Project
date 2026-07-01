@@ -65,6 +65,9 @@ class ConfigTest(unittest.TestCase):
         self.assertFalse(config.watch.enabled)
         self.assertEqual(config.watch.poll_interval_seconds, 5)
         self.assertEqual(config.watch.debounce_seconds, 5)
+        self.assertEqual(config.station_config.source, "json")
+        self.assertEqual(config.station_config.db.driver, "sqlserver")
+        self.assertEqual(config.station_config.db.port, 1433)
 
     def test_missing_required_config_field_raises_clear_error(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -176,6 +179,65 @@ class ConfigTest(unittest.TestCase):
             )
 
             with self.assertRaisesRegex(ConfigError, "duplicate dir"):
+                load_config(config_path)
+
+    def test_loads_sqlserver_station_config(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config_path = Path(tmp_dir) / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "share": {"root": "\\\\server\\share", "username": "IT", "password": "FQCIT"},
+                        "log": {"dir": "\\\\server\\log"},
+                        "upload": {"url": "http://example.test/upload"},
+                        "scan": {"target_dirs": []},
+                        "station_config": {
+                            "source": "db_then_json",
+                            "on_db_error": "fallback_to_json",
+                            "db": {
+                                "enabled": True,
+                                "driver": "sqlserver",
+                                "odbc_driver": "ODBC Driver 18 for SQL Server",
+                                "host": "127.0.0.1",
+                                "port": 1433,
+                                "database": "QMS",
+                                "username": "sa",
+                                "password": "secret",
+                                "table": "dbo.station_directory_config",
+                            },
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            config = load_config(config_path)
+
+        self.assertEqual(config.station_config.source, "db_then_json")
+        self.assertEqual(config.station_config.on_db_error, "fallback_to_json")
+        self.assertTrue(config.station_config.db.enabled)
+        self.assertEqual(config.station_config.db.driver, "sqlserver")
+        self.assertEqual(config.station_config.db.odbc_driver, "ODBC Driver 18 for SQL Server")
+        self.assertEqual(config.station_config.db.port, 1433)
+        self.assertEqual(config.station_config.db.table, "dbo.station_directory_config")
+
+    def test_invalid_station_config_source_raises_clear_error(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config_path = Path(tmp_dir) / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "share": {"root": "\\\\server\\share", "username": "IT", "password": "FQCIT"},
+                        "log": {"dir": "\\\\server\\log"},
+                        "upload": {"url": "http://example.test/upload"},
+                        "scan": {"target_dirs": []},
+                        "station_config": {"source": "database"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ConfigError, "station_config.source"):
                 load_config(config_path)
 
 

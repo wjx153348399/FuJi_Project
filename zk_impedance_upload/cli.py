@@ -9,6 +9,7 @@ from zk_impedance_upload.exceptions import ConfigError, LogError
 from zk_impedance_upload.log_store import LogStore
 from zk_impedance_upload.runner import run_upload_task
 from zk_impedance_upload.share_auth import ensure_share_access
+from zk_impedance_upload.station_config import build_effective_scan_config
 from zk_impedance_upload.watcher import run_watch_service
 
 
@@ -52,6 +53,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             ensure_share_access(config)
             LogStore(config.log.dir).ensure_ready()
+            build_effective_scan_config(config)
         except ConfigError as exc:
             print(f"配置校验失败: {exc}", file=sys.stderr)
             return 2

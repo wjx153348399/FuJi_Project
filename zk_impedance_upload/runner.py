@@ -17,6 +17,7 @@ from zk_impedance_upload.log_store import LogStore
 from zk_impedance_upload.parser import ParsedFile, parse_candidate
 from zk_impedance_upload.scanner import scan_files
 from zk_impedance_upload.share_auth import ensure_share_access
+from zk_impedance_upload.station_config import StationTargetRepository, build_effective_scan_config
 from zk_impedance_upload.uploader import UploadResult, upload_file
 from zk_impedance_upload.watcher import build_watch_summary
 
@@ -40,6 +41,7 @@ def run_upload_task(
     upload_func: UploadFunc | None = None,
     share_access_func: ShareAccessFunc | None = None,
     progress_func: ProgressFunc | None = None,
+    station_repository: StationTargetRepository | None = None,
 ) -> RunResult:
     progress = progress_func or _no_progress
     run_time = (now or datetime.now(SHANGHAI_TZ)).astimezone(SHANGHAI_TZ)
@@ -54,6 +56,14 @@ def run_upload_task(
     progress("正在检查日志目录...")
     log_store.ensure_ready()
     progress("日志目录检查完成")
+    effective_scan = build_effective_scan_config(config, station_repository)
+    progress(
+        "工站目录配置加载完成: "
+        f"source={effective_scan.effective_source}, "
+        f"targets={effective_scan.target_count}"
+    )
+    if effective_scan.fallback_reason:
+        progress(f"工站目录配置已回退到 JSON: {effective_scan.fallback_reason}")
 
     date_window = build_date_window(now=run_time, day_offset=config.upload.day_offset)
     progress(f"目标日期窗口: {date_window.target_day}")
@@ -64,7 +74,7 @@ def run_upload_task(
         summary_timestamp=summary_timestamp,
     )
     progress("正在扫描共享盘文件...")
-    scan_result = scan_files(config.share.root, config.scan, date_window)
+    scan_result = scan_files(config.share.root, effective_scan.scan, date_window)
     progress(
         "扫描完成: "
         f"candidate={len(scan_result.candidates)}, "
@@ -152,7 +162,12 @@ def run_upload_task(
         "pending_count": pending_count,
         "missing_dir_count": len(scan_result.missing_dirs),
         "failed_dir_count": len(scan_result.failed_dirs),
+        "station_target_count": effective_scan.target_count,
+        "station_config_source": effective_scan.requested_source,
+        "effective_station_config_source": effective_scan.effective_source,
     }
+    if effective_scan.fallback_reason:
+        stats["station_config_fallback_reason"] = effective_scan.fallback_reason
     summary = {
         "run_id": run_id,
         "run_time": run_time.strftime("%Y-%m-%d %H:%M:%S"),

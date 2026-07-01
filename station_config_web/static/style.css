@@ -102,6 +102,11 @@ button {
   color: #b91c1c;
 }
 
+.notice.warn {
+  border-color: #fde68a;
+  color: #92400e;
+}
+
 .notice.success {
   border-color: #bbf7d0;
   color: #166534;

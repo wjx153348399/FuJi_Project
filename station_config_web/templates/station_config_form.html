@@ -18,9 +18,15 @@
       {% if error %}
         <section class="notice error">{{ error }}</section>
       {% endif %}
+      {% if warning %}
+        <section class="notice warn">{{ warning }}</section>
+      {% endif %}
 
       <section class="form-panel">
-        <form method="post" action="{% if mode == 'new' %}/station-config/new{% else %}/station-config/{{ form.id }}/edit{% endif %}">
+        <form method="post" action="{% if mode == 'new' %}/station-config/new{% else %}/station-config/{{ form.id }}/edit{% endif %}" onsubmit="return confirm('确认保存这条工站目录配置？保存后会影响自动上传扫描目录。');">
+          {% if allow_force_save %}
+            <input type="hidden" name="confirm_missing_path" value="1">
+          {% endif %}
           <label>
             <span>工站代码</span>
             <input name="station_code" value="{{ form.station_code }}" placeholder="暂不确定时可填 UNKNOWN">
@@ -57,7 +63,7 @@
           </label>
 
           <div class="form-actions">
-            <button type="submit">保存</button>
+            <button type="submit">{% if allow_force_save %}确认仍然保存{% else %}保存{% endif %}</button>
             <a class="small-link" href="/station-config">取消</a>
           </div>
         </form>

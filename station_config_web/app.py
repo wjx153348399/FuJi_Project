@@ -68,6 +68,7 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
         enabled: str = Form("0"),
         sort_order: str = Form("0"),
         remark: str = Form(""),
+        confirm_missing_path: str = Form("0"),
     ) -> HTMLResponse | RedirectResponse:
         form = _form_from_request(
             station_code=station_code,
@@ -78,6 +79,17 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
             remark=remark,
         )
         try:
+            directory_warning = _directory_save_warning(config, form)
+            if directory_warning and confirm_missing_path != "1":
+                return _render_form(
+                    request,
+                    config,
+                    "new",
+                    form,
+                    warning=directory_warning,
+                    allow_force_save=True,
+                    status_code=400,
+                )
             StationDirectoryRepository(config).create_config(_input_from_form(form))
         except Exception as exc:
             return _render_form(request, config, "new", form, error=str(exc), status_code=400)
@@ -112,6 +124,7 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
         enabled: str = Form("0"),
         sort_order: str = Form("0"),
         remark: str = Form(""),
+        confirm_missing_path: str = Form("0"),
     ) -> HTMLResponse | RedirectResponse:
         form = _form_from_request(
             station_code=station_code,
@@ -123,6 +136,17 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
             config_id=config_id,
         )
         try:
+            directory_warning = _directory_save_warning(config, form)
+            if directory_warning and confirm_missing_path != "1":
+                return _render_form(
+                    request,
+                    config,
+                    "edit",
+                    form,
+                    warning=directory_warning,
+                    allow_force_save=True,
+                    status_code=400,
+                )
             StationDirectoryRepository(config).update_config(config_id, _input_from_form(form))
         except Exception as exc:
             return _render_form(request, config, "edit", form, error=str(exc), status_code=400)
@@ -237,6 +261,8 @@ def _render_form(
     mode: str,
     form: dict[str, object],
     error: str = "",
+    warning: str = "",
+    allow_force_save: bool = False,
     status_code: int = 200,
 ) -> HTMLResponse:
     return _TEMPLATES.TemplateResponse(
@@ -247,9 +273,20 @@ def _render_form(
             "mode": mode,
             "form": form,
             "error": error,
+            "warning": warning,
+            "allow_force_save": allow_force_save,
         },
         status_code=status_code,
     )
+
+
+def _directory_save_warning(config: WebConfig, form: dict[str, object]) -> str:
+    status_result = StationDirectoryRepository(config).check_directory(str(form["directory_path"]))
+    if status_result.is_dir:
+        return ""
+    if status_result.exists:
+        return f"路径存在但不是目录，保存后自动上传无法扫描该配置: {status_result.full_path}"
+    return f"目录不存在，保存后自动上传会跳过该配置: {status_result.full_path}"
 
 def create_missing_config_app(error: ConfigError) -> FastAPI:
     app = FastAPI(title="Station Directory Config")

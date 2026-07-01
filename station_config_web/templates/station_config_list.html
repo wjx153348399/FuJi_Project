@@ -89,11 +89,11 @@
                       <button class="small-button secondary" type="submit">测试目录</button>
                     </form>
                     {% if row.enabled %}
-                      <form method="post" action="/station-config/{{ row.id }}/disable">
+                      <form method="post" action="/station-config/{{ row.id }}/disable" onsubmit="return confirm('确认停用这条配置？停用后自动上传将不再扫描该目录。');">
                         <button class="small-button danger" type="submit">停用</button>
                       </form>
                     {% else %}
-                      <form method="post" action="/station-config/{{ row.id }}/enable">
+                      <form method="post" action="/station-config/{{ row.id }}/enable" onsubmit="return confirm('确认启用这条配置？启用后自动上传会扫描该目录。');">
                         <button class="small-button" type="submit">启用</button>
                       </form>
                     {% endif %}

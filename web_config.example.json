@@ -1,0 +1,24 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8088
+  },
+  "db": {
+    "driver": "ODBC Driver 17 for SQL Server",
+    "host": "192.168.0.253",
+    "port": 1433,
+    "database": "QMS",
+    "username": "YOUR_DB_USERNAME",
+    "password": "YOUR_DB_PASSWORD",
+    "table": "dbo.station_directory_config",
+    "connect_timeout_seconds": 5
+  },
+  "share": {
+    "root": "\\\\10.0.8.252\\ProductionFieldFile 现场公共盘\\阻抗"
+  },
+  "auth": {
+    "username": "admin",
+    "password": "CHANGE_ME"
+  }
+}
+

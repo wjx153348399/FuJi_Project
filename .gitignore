@@ -8,4 +8,5 @@ dist/
 build/
 *.egg-info/
 config.json
+web_config.json
 logs/

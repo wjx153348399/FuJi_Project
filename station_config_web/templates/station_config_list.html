@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <title>工站目录配置</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <main class="page">
+      <header class="toolbar">
+        <div>
+          <h1>工站目录配置</h1>
+          <p>{{ config.db.database }} / {{ config.db.table }}</p>
+        </div>
+        <form class="filters" method="get" action="/station-config">
+          <select name="status">
+            <option value="all" {% if status == "all" %}selected{% endif %}>全部</option>
+            <option value="enabled" {% if status == "enabled" %}selected{% endif %}>启用</option>
+            <option value="disabled" {% if status == "disabled" %}selected{% endif %}>停用</option>
+          </select>
+          <input name="keyword" value="{{ keyword }}" placeholder="工站/目录/备注">
+          <button type="submit">查询</button>
+        </form>
+      </header>
+
+      {% if error %}
+        <section class="notice error">{{ error }}</section>
+      {% endif %}
+
+      <section class="summary">
+        <span>记录数：{{ rows|length }}</span>
+        <span>共享盘根目录：{{ config.share.root }}</span>
+      </section>
+
+      <section class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>状态</th>
+              <th>工站代码</th>
+              <th>名称</th>
+              <th>目录路径</th>
+              <th>目录检测</th>
+              <th>排序</th>
+              <th>备注</th>
+              <th>更新时间</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              <tr class="{% if not row.enabled %}muted{% endif %}">
+                <td>{{ row.id }}</td>
+                <td>
+                  {% if row.enabled %}
+                    <span class="badge ok">启用</span>
+                  {% else %}
+                    <span class="badge off">停用</span>
+                  {% endif %}
+                </td>
+                <td>{{ row.station_code }}</td>
+                <td>{{ row.station_name or "" }}</td>
+                <td>
+                  <div class="path-main">{{ row.directory_path }}</div>
+                  <div class="path-sub">{{ row.full_path }}</div>
+                </td>
+                <td>
+                  {% if row.path_is_dir %}
+                    <span class="badge ok">存在</span>
+                  {% elif row.path_exists %}
+                    <span class="badge warn">不是目录</span>
+                  {% else %}
+                    <span class="badge error">不存在</span>
+                  {% endif %}
+                </td>
+                <td>{{ row.sort_order }}</td>
+                <td>{{ row.remark or "" }}</td>
+                <td>{{ row.updated_at }}</td>
+              </tr>
+            {% else %}
+              <tr>
+                <td colspan="9" class="empty">暂无配置</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    </main>
+  </body>
+</html>
+

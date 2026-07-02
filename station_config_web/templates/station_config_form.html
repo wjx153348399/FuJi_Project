@@ -28,12 +28,12 @@
             <input type="hidden" name="confirm_missing_path" value="1">
           {% endif %}
           <label>
-            <span>工站代码</span>
-            <input name="station_code" value="{{ form.station_code }}" placeholder="暂不确定时可填 UNKNOWN">
+            <span>上传工站代码</span>
+            <input name="station_code" value="{{ form.station_code }}" placeholder="会随文件一起传给后端，例如 AFC / A10">
           </label>
 
           <label>
-            <span>工站名称</span>
+            <span>工站显示名称</span>
             <input name="station_name" value="{{ form.station_name }}" placeholder="例如 LXD / AFX / OUTER">
           </label>
 

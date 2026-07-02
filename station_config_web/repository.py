@@ -229,7 +229,9 @@ class StationDirectoryRepository:
 
 def validate_station_directory_input(data: StationDirectoryInput) -> StationDirectoryInput:
     directory_path = validate_relative_directory_path(data.directory_path)
-    station_code = data.station_code.strip() or "UNKNOWN"
+    station_code = data.station_code.strip()
+    if not station_code:
+        raise ConfigError("上传工站代码不能为空")
     station_name = _clean_optional_text(data.station_name)
     remark = _clean_optional_text(data.remark)
     updated_by = _clean_optional_text(data.updated_by) or "web"

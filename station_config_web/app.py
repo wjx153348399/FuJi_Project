@@ -211,7 +211,7 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
 def _empty_form(config_id: int | None = None) -> dict[str, object]:
     return {
         "id": config_id,
-        "station_code": "UNKNOWN",
+        "station_code": "",
         "station_name": "",
         "directory_path": "",
         "enabled": "1",
@@ -245,6 +245,8 @@ def _input_from_form(form: dict[str, object]) -> StationDirectoryInput:
         sort_order = int(str(form["sort_order"]).strip() or "0")
     except ValueError as exc:
         raise ConfigError("排序必须是整数") from exc
+    if not str(form["station_code"]).strip():
+        raise ConfigError("上传工站代码不能为空")
     return StationDirectoryInput(
         station_code=str(form["station_code"]),
         station_name=str(form["station_name"]),

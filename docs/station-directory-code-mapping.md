@@ -8,7 +8,7 @@
 - Web 配置页面：`http://127.0.0.1:8088/station-config`
 - 当前真实目录数量：12 条
 - 保留测试目录：`ExampleStationDirectoryA`
-- 当前问题：真实目录的 `station_code` 仍为 `UNKNOWN`，还不能作为最终上传工站代码使用
+- 当前状态：真实目录的 `station_code` 已按 `station_name` 临时更新，后续仍需等待后端确认最终字段名和最终编码
 
 上传链路已经支持随文件一起提交工站代码：
 
@@ -30,20 +30,20 @@ multipart/form-data
 
 ## 真实目录映射表
 
-| ID | 目录类型 | 工站名称 | 当前 station_code | 建议临时 station_code | 最终上传工站代码 | 目录状态 | 备注 |
+| ID | 目录类型 | 工站名称 | 当前 station_code | 临时上传工站代码 | 最终上传工站代码 | 目录状态 | 备注 |
 |---:|---|---|---|---|---|---|---|
-| 13 | 半成品 | AFC | UNKNOWN | AFC | 待确认 | 存在 | HALF-AFC |
-| 14 | 半成品 | AFX | UNKNOWN | AFX | 待确认 | 存在 | HALF-AFX |
-| 15 | 半成品 | JXN | UNKNOWN | JXN | 待确认 | 存在 | HALF-JXN |
-| 2 | 半成品 | LXD | UNKNOWN | LXD | 待确认 | 存在 | HALF-LXD |
-| 16 | 半成品 | ZGL | UNKNOWN | ZGL | 待确认 | 存在 | HALF-ZGL |
-| 17 | CP 阻抗 | AFC | UNKNOWN | AFC | 待确认 | 存在 | CP-AFC |
-| 18 | CP 阻抗 | AFX | UNKNOWN | AFX | 待确认 | 存在 | CP-AFX |
-| 19 | CP 阻抗 | JXN | UNKNOWN | JXN | 待确认 | 存在 | CP-JXN |
-| 20 | CP 阻抗 | LXD | UNKNOWN | LXD | 待确认 | 存在 | CP-LXD |
-| 21 | CP 阻抗 | ZGL | UNKNOWN | ZGL | 待确认 | 存在 | CP-ZGL |
-| 22 | 半成品 | OUTER | UNKNOWN | OUTER | 待确认 | 存在 | HALF-OUTER |
-| 23 | CP 阻抗 | OUTER | UNKNOWN | OUTER | 待确认 | 存在 | CP-OUTER |
+| 13 | 半成品 | AFC | AFC | AFC | 待确认 | 存在 | HALF-AFC |
+| 14 | 半成品 | AFX | AFX | AFX | 待确认 | 存在 | HALF-AFX |
+| 15 | 半成品 | JXN | JXN | JXN | 待确认 | 存在 | HALF-JXN |
+| 2 | 半成品 | LXD | LXD | LXD | 待确认 | 存在 | HALF-LXD |
+| 16 | 半成品 | ZGL | ZGL | ZGL | 待确认 | 存在 | HALF-ZGL |
+| 17 | CP 阻抗 | AFC | AFC | AFC | 待确认 | 存在 | CP-AFC |
+| 18 | CP 阻抗 | AFX | AFX | AFX | 待确认 | 存在 | CP-AFX |
+| 19 | CP 阻抗 | JXN | JXN | JXN | 待确认 | 存在 | CP-JXN |
+| 20 | CP 阻抗 | LXD | LXD | LXD | 待确认 | 存在 | CP-LXD |
+| 21 | CP 阻抗 | ZGL | ZGL | ZGL | 待确认 | 存在 | CP-ZGL |
+| 22 | 半成品 | OUTER | OUTER | OUTER | 待确认 | 存在 | HALF-OUTER |
+| 23 | CP 阻抗 | OUTER | OUTER | OUTER | 待确认 | 存在 | CP-OUTER |
 
 ## 目录明细
 
@@ -84,7 +84,7 @@ multipart/form-data
 
 ## 后续更新 SQL 模板
 
-如果确认临时使用工站名称作为上传代码，可以执行：
+已按下面脚本临时使用工站名称作为上传代码：
 
 ```sql
 UPDATE QMS.dbo.station_directory_config
@@ -96,7 +96,7 @@ WHERE enabled = 1
   AND station_name IS NOT NULL;
 ```
 
-如果业务给出类似 `A10`、`A50` 的最终代码，按 ID 精准更新更安全：
+如果业务后续给出类似 `A10`、`A50` 的最终代码，按 ID 精准更新更安全：
 
 ```sql
 UPDATE QMS.dbo.station_directory_config

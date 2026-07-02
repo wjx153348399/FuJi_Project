@@ -125,7 +125,7 @@ class StationConfigWebRepositoryTest(unittest.TestCase):
         ):
             StationDirectoryRepository(_config()).create_config(
                 StationDirectoryInput(
-                    station_code=" ",
+                    station_code=" AFC ",
                     station_name=" LXD ",
                     directory_path=r"folder/target",
                     enabled=True,
@@ -138,9 +138,22 @@ class StationConfigWebRepositoryTest(unittest.TestCase):
         self.assertIn("INSERT INTO", write_connection.cursor_obj.sql)
         self.assertEqual(
             write_connection.cursor_obj.params,
-            ["UNKNOWN", "LXD", r"folder\target", 1, 20, "test", "web", "web"],
+            ["AFC", "LXD", r"folder\target", 1, 20, "test", "web", "web"],
         )
         self.assertTrue(write_connection.committed)
+
+    def test_create_config_rejects_blank_station_code(self):
+        with self.assertRaisesRegex(ConfigError, "上传工站代码"):
+            StationDirectoryRepository(_config()).create_config(
+                StationDirectoryInput(
+                    station_code=" ",
+                    station_name="LXD",
+                    directory_path="target",
+                    enabled=True,
+                    sort_order=0,
+                    remark=None,
+                )
+            )
 
     def test_create_config_rejects_duplicate_directory_path(self):
         duplicate_connection = FakeConnection(one=object())

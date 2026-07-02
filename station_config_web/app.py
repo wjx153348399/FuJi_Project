@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -69,7 +69,7 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
         sort_order: str = Form("0"),
         remark: str = Form(""),
         confirm_missing_path: str = Form("0"),
-    ) -> HTMLResponse | RedirectResponse:
+    ) -> Response:
         form = _form_from_request(
             station_code=station_code,
             station_name=station_name,
@@ -125,7 +125,7 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
         sort_order: str = Form("0"),
         remark: str = Form(""),
         confirm_missing_path: str = Form("0"),
-    ) -> HTMLResponse | RedirectResponse:
+    ) -> Response:
         form = _form_from_request(
             station_code=station_code,
             station_name=station_name,

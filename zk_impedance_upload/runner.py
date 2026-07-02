@@ -128,7 +128,10 @@ def run_upload_task(
         total_uploads = len(upload_pending)
         progress(f"开始真实上传: total={total_uploads}")
         for index, parsed_file in enumerate(upload_pending, start=1):
-            progress(f"正在上传 {index}/{total_uploads}: {parsed_file.filename}")
+            progress(
+                f"正在上传 {index}/{total_uploads}: {parsed_file.filename}, "
+                f"{config.upload.station_field_name}={parsed_file.station_code}"
+            )
             result = effective_upload(parsed_file)
             if result.success:
                 success_count += 1
@@ -143,12 +146,30 @@ def run_upload_task(
                 if parsed_file.business_key:
                     log_store.save_uploaded_business_key(parsed_file.business_key, record)
                 upload_log_path = str(
-                    log_store.append_upload_log(log_date, _upload_success_entry(run_id, parsed_file, result))
+                    log_store.append_upload_log(
+                        log_date,
+                        _upload_success_entry(
+                            run_id,
+                            parsed_file,
+                            result,
+                            config.upload.station_field_name,
+                        ),
+                    )
                 )
                 progress(f"上传成功 {index}/{total_uploads}: {parsed_file.filename}")
             else:
                 fail_count += 1
-                upload_log_path = str(log_store.append_upload_log(log_date, _upload_failed_entry(run_id, parsed_file, result)))
+                upload_log_path = str(
+                    log_store.append_upload_log(
+                        log_date,
+                        _upload_failed_entry(
+                            run_id,
+                            parsed_file,
+                            result,
+                            config.upload.station_field_name,
+                        ),
+                    )
+                )
                 progress(f"上传失败 {index}/{total_uploads}: {parsed_file.filename} - {result.error}")
 
     skip_count = len(batch_result.skipped) + len(history_result.skipped) + len(limit_skipped)
@@ -243,6 +264,7 @@ def _base_entry(run_id: str, parsed_file: ParsedFile) -> dict[str, object]:
         "file_size": parsed_file.size,
         "file_mtime": parsed_file.modified_at,
         "station_code": parsed_file.station_code,
+        "upload_station_code": parsed_file.station_code,
         "source_dir": parsed_file.source_dir,
         "region": parsed_file.region,
         "normalized_name": parsed_file.normalized_name,
@@ -282,11 +304,13 @@ def _upload_success_entry(
     run_id: str,
     parsed_file: ParsedFile,
     result: UploadResult,
+    station_field_name: str,
 ) -> dict[str, object]:
     entry = _base_entry(run_id, parsed_file)
     entry.update(
         {
             "action": "upload_success",
+            "upload_station_field": station_field_name,
             "http_status": result.status_code,
             "response": result.response,
             "retry_count": result.retry_count,
@@ -295,11 +319,17 @@ def _upload_success_entry(
     return entry
 
 
-def _upload_failed_entry(run_id: str, parsed_file: ParsedFile, result: UploadResult) -> dict[str, object]:
+def _upload_failed_entry(
+    run_id: str,
+    parsed_file: ParsedFile,
+    result: UploadResult,
+    station_field_name: str,
+) -> dict[str, object]:
     entry = _base_entry(run_id, parsed_file)
     entry.update(
         {
             "action": "upload_failed",
+            "upload_station_field": station_field_name,
             "http_status": result.status_code,
             "response": result.response,
             "response_text": result.response_text,

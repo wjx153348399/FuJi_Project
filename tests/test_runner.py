@@ -4,6 +4,7 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from zk_impedance_upload.config import (
@@ -245,6 +246,47 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(history_entry["source_dir"], "station-a")
         self.assertTrue(history_entry["fallback_key"].startswith("FALLBACK|A10|"))
 
+    def test_real_upload_function_receives_station_code_and_field_name(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir) / "share"
+            log_dir = Path(tmp_dir) / "logs"
+            target_dir = root / "station-a" / "OUTER"
+            target_dir.mkdir(parents=True)
+            file_path = target_dir / "example.xlsx"
+            file_path.write_bytes(b"excel")
+            _set_mtime(file_path, "2026-06-13 10:00:00")
+            upload_calls = []
+
+            def fake_upload_file(**kwargs):
+                upload_calls.append(kwargs)
+                return UploadResult(
+                    success=True,
+                    status_code=200,
+                    response={"ok": True},
+                    response_text='{"ok":true}',
+                    error="",
+                    retry_count=0,
+                )
+
+            with patch("zk_impedance_upload.runner.upload_file", side_effect=fake_upload_file):
+                run_upload_task(
+                    config=_config(
+                        root,
+                        log_dir,
+                        targets=[ScanTargetConfig(station_code="A10", dir="station-a")],
+                        station_field_name="stationCode",
+                    ),
+                    now=datetime(2026, 6, 14, 8, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+                )
+
+            upload_entry = json.loads((log_dir / "upload_log_2026-06-14.jsonl").read_text(encoding="utf-8"))
+
+        self.assertEqual(upload_calls[0]["station_code"], "A10")
+        self.assertEqual(upload_calls[0]["station_field_name"], "stationCode")
+        self.assertTrue(upload_calls[0]["send_station_code"])
+        self.assertEqual(upload_entry["upload_station_code"], "A10")
+        self.assertEqual(upload_entry["upload_station_field"], "stationCode")
+
 
 def _config(
     root: Path,
@@ -253,6 +295,7 @@ def _config(
     watch_enabled: bool = False,
     max_upload_files: Optional[int] = None,
     targets: Optional[list[ScanTargetConfig]] = None,
+    station_field_name: str = "station_code",
 ) -> AppConfig:
     return AppConfig(
         share=ShareConfig(root=str(root), username="IT", password="FQCIT"),
@@ -264,6 +307,7 @@ def _config(
             dry_run=dry_run,
             timeout_seconds=60,
             retry_count=0,
+            station_field_name=station_field_name,
         ),
         scan=ScanConfig(
             target_dirs=["target"],

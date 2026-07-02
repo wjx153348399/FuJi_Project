@@ -52,35 +52,6 @@ class FakeConnection:
         return None
 
 
-class LegacyFakeCursor:
-    def __init__(self, rows):
-        self.rows = rows
-        self.sql = ""
-        self.params = []
-
-    def execute(self, sql, *params):
-        self.sql = sql
-        self.params = list(params)
-        return self
-
-    def fetchall(self):
-        return self.rows
-
-
-class LegacyFakeConnection:
-    def __init__(self, rows):
-        self.cursor_obj = LegacyFakeCursor(rows)
-
-    def cursor(self):
-        return self.cursor_obj
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        return None
-
-
 class Row:
     id = 1
     station_code = "UNKNOWN"
@@ -100,7 +71,7 @@ class StationConfigWebRepositoryTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             Path(tmp_dir, "target").mkdir()
             config = _config(tmp_dir)
-            connection = LegacyFakeConnection([Row()])
+            connection = FakeConnection(rows=[Row()])
 
             with patch("station_config_web.repository._connect", return_value=connection):
                 rows = StationDirectoryRepository(config).list_configs(status="enabled", keyword="LXD")

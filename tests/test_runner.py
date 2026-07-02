@@ -284,7 +284,7 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(upload_calls[0]["station_code"], "A10")
         self.assertEqual(upload_calls[0]["station_field_name"], "stationCode")
         self.assertTrue(upload_calls[0]["send_station_code"])
-        self.assertEqual(upload_entry["upload_station_code"], "A10")
+        self.assertEqual(upload_entry["station_code"], "A10")
         self.assertEqual(upload_entry["upload_station_field"], "stationCode")
 
 

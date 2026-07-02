@@ -264,7 +264,6 @@ def _base_entry(run_id: str, parsed_file: ParsedFile) -> dict[str, object]:
         "file_size": parsed_file.size,
         "file_mtime": parsed_file.modified_at,
         "station_code": parsed_file.station_code,
-        "upload_station_code": parsed_file.station_code,
         "source_dir": parsed_file.source_dir,
         "region": parsed_file.region,
         "normalized_name": parsed_file.normalized_name,

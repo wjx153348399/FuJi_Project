@@ -9,7 +9,7 @@ from zk_impedance_upload.config import AppConfig, ScanConfig, ScanTargetConfig, 
 from zk_impedance_upload.exceptions import ConfigError
 
 
-_STATION_CODE_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+_FLOW_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 _TABLE_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$")
 
 
@@ -54,7 +54,7 @@ class SqlServerStationTargetRepository:
                 pass
             rows = cursor.execute(
                 f"""
-                SELECT station_code, directory_path
+                SELECT flow, directory_path
                 FROM {table_name}
                 WHERE enabled = 1
                 ORDER BY sort_order ASC, id ASC
@@ -67,7 +67,7 @@ class SqlServerStationTargetRepository:
         for row in rows:
             targets.append(
                 ScanTargetConfig(
-                    station_code=str(row.station_code),
+                    flow=str(row.flow),
                     dir=str(row.directory_path),
                     enabled=True,
                 )
@@ -145,11 +145,9 @@ def _validate_targets(targets: list[ScanTargetConfig]) -> list[ScanTargetConfig]
     normalized_targets: list[ScanTargetConfig] = []
     seen_dirs: set[str] = set()
     for index, target in enumerate(targets):
-        station_code = target.station_code.strip()
-        if not station_code:
-            raise ConfigError(f"station target[{index}].station_code is required")
-        if not _STATION_CODE_PATTERN.match(station_code):
-            raise ConfigError(f"station target[{index}].station_code contains unsupported characters")
+        flow = target.flow.strip()
+        if flow and not _FLOW_PATTERN.match(flow):
+            raise ConfigError(f"station target[{index}].flow contains unsupported characters")
 
         target_dir = _normalize_directory(target.dir)
         if not target_dir:
@@ -163,7 +161,7 @@ def _validate_targets(targets: list[ScanTargetConfig]) -> list[ScanTargetConfig]
         seen_dirs.add(lookup_key)
         normalized_targets.append(
             ScanTargetConfig(
-                station_code=station_code,
+                flow=flow,
                 dir=target_dir,
                 enabled=target.enabled,
             )

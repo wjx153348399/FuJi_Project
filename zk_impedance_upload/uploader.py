@@ -23,17 +23,15 @@ def upload_file(
     url: str,
     timeout_seconds: int,
     retry_count: int,
-    station_code: str = "",
-    send_station_code: bool = True,
-    station_field_name: str = "station_code",
+    flow: str,
+    filePath: str,
     session: Any | None = None,
 ) -> UploadResult:
     path = Path(file_path)
     http = session or requests.Session()
     data = _build_upload_data(
-        station_code=station_code,
-        send_station_code=send_station_code,
-        station_field_name=station_field_name,
+        flow=flow,
+        filePath=filePath,
     )
 
     attempts = retry_count + 1
@@ -115,16 +113,17 @@ def _parse_response_json(response: Any) -> dict[str, Any]:
 
 
 def _build_upload_data(
-    station_code: str,
-    send_station_code: bool,
-    station_field_name: str,
+    flow: str,
+    filePath: str,
 ) -> dict[str, str]:
-    if not send_station_code:
-        return {}
-    field_name = station_field_name.strip()
-    if not field_name:
-        return {}
-    return {field_name: station_code}
+    data: dict[str, str] = {}
+    clean_flow = flow.strip()
+    clean_file_path = filePath.strip()
+    if clean_flow:
+        data["flow"] = clean_flow
+    if clean_file_path:
+        data["filePath"] = clean_file_path
+    return data
 
 
 def _business_error_message(response: dict[str, Any], response_text: str) -> str:

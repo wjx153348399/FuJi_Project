@@ -29,13 +29,11 @@ class UploadConfig:
     dry_run: bool = False
     timeout_seconds: int = 300
     retry_count: int = 2
-    send_station_code: bool = True
-    station_field_name: str = "station_code"
 
 
 @dataclass(frozen=True)
 class ScanTargetConfig:
-    station_code: str
+    flow: str
     dir: str
     enabled: bool = True
 
@@ -137,8 +135,6 @@ def parse_config(raw: dict[str, Any]) -> AppConfig:
             dry_run=_optional_bool(upload, "dry_run", False),
             timeout_seconds=_optional_int(upload, "timeout_seconds", 300),
             retry_count=_optional_int(upload, "retry_count", 2),
-            send_station_code=_optional_bool(upload, "send_station_code", True),
-            station_field_name=_optional_str(upload, "station_field_name", "station_code"),
         ),
         scan=ScanConfig(
             recursive=_optional_bool(scan, "recursive", True),
@@ -176,9 +172,9 @@ def _optional_scan_targets(section: dict[str, Any]) -> list[ScanTargetConfig]:
         if not isinstance(item, dict):
             raise ConfigError(f"scan.targets[{index}] must be an object")
 
-        station_code = item.get("station_code")
-        if not isinstance(station_code, str) or not station_code.strip():
-            raise ConfigError(f"scan.targets[{index}].station_code is required")
+        flow = item.get("flow", "")
+        if not isinstance(flow, str):
+            raise ConfigError(f"scan.targets[{index}].flow must be a string")
 
         target_dir = item.get("dir")
         if not isinstance(target_dir, str) or not target_dir.strip():
@@ -196,7 +192,7 @@ def _optional_scan_targets(section: dict[str, Any]) -> list[ScanTargetConfig]:
 
         targets.append(
             ScanTargetConfig(
-                station_code=station_code.strip(),
+                flow=flow.strip(),
                 dir=normalized_dir,
                 enabled=enabled,
             )

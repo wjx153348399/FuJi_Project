@@ -31,6 +31,7 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
         request: Request,
         status: str = Query("all"),
         keyword: str = Query(""),
+        notice: str = Query(""),
     ) -> HTMLResponse:
         rows = []
         error = ""
@@ -47,6 +48,7 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
                 "status": status,
                 "keyword": keyword,
                 "error": error,
+                "notice": _notice_message(notice),
             },
         )
 
@@ -62,7 +64,7 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
     @app.post("/station-config/new", response_class=HTMLResponse)
     def station_config_create(
         request: Request,
-        station_code: str = Form(""),
+        flow: str = Form(""),
         station_name: str = Form(""),
         directory_path: str = Form(""),
         enabled: str = Form("0"),
@@ -71,7 +73,7 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
         confirm_missing_path: str = Form("0"),
     ) -> Response:
         form = _form_from_request(
-            station_code=station_code,
+            flow=flow,
             station_name=station_name,
             directory_path=directory_path,
             enabled=enabled,
@@ -93,7 +95,7 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
             StationDirectoryRepository(config).create_config(_input_from_form(form))
         except Exception as exc:
             return _render_form(request, config, "new", form, error=str(exc), status_code=400)
-        return RedirectResponse(url="/station-config", status_code=303)
+        return RedirectResponse(url="/station-config?notice=created", status_code=303)
 
     @app.get("/station-config/{config_id}/edit", response_class=HTMLResponse)
     def station_config_edit(request: Request, config_id: int) -> HTMLResponse:
@@ -103,7 +105,7 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
                 raise ConfigError(f"配置不存在: {config_id}")
             form = {
                 "id": row.id,
-                "station_code": row.station_code,
+                "flow": row.flow,
                 "station_name": row.station_name or "",
                 "directory_path": row.directory_path,
                 "enabled": "1" if row.enabled else "0",
@@ -118,7 +120,7 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
     def station_config_update(
         request: Request,
         config_id: int,
-        station_code: str = Form(""),
+        flow: str = Form(""),
         station_name: str = Form(""),
         directory_path: str = Form(""),
         enabled: str = Form("0"),
@@ -127,7 +129,7 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
         confirm_missing_path: str = Form("0"),
     ) -> Response:
         form = _form_from_request(
-            station_code=station_code,
+            flow=flow,
             station_name=station_name,
             directory_path=directory_path,
             enabled=enabled,
@@ -150,17 +152,17 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
             StationDirectoryRepository(config).update_config(config_id, _input_from_form(form))
         except Exception as exc:
             return _render_form(request, config, "edit", form, error=str(exc), status_code=400)
-        return RedirectResponse(url="/station-config", status_code=303)
+        return RedirectResponse(url="/station-config?notice=updated", status_code=303)
 
     @app.post("/station-config/{config_id}/enable")
     def station_config_enable(config_id: int) -> RedirectResponse:
         StationDirectoryRepository(config).set_enabled(config_id, True)
-        return RedirectResponse(url="/station-config", status_code=303)
+        return RedirectResponse(url="/station-config?notice=enabled", status_code=303)
 
     @app.post("/station-config/{config_id}/disable")
     def station_config_disable(config_id: int) -> RedirectResponse:
         StationDirectoryRepository(config).set_enabled(config_id, False)
-        return RedirectResponse(url="/station-config", status_code=303)
+        return RedirectResponse(url="/station-config?notice=disabled", status_code=303)
 
     @app.post("/station-config/check-path", response_class=HTMLResponse)
     def station_config_check_path(
@@ -211,7 +213,7 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
 def _empty_form(config_id: int | None = None) -> dict[str, object]:
     return {
         "id": config_id,
-        "station_code": "",
+        "flow": "",
         "station_name": "",
         "directory_path": "",
         "enabled": "1",
@@ -221,7 +223,7 @@ def _empty_form(config_id: int | None = None) -> dict[str, object]:
 
 
 def _form_from_request(
-    station_code: str,
+    flow: str,
     station_name: str,
     directory_path: str,
     enabled: str,
@@ -231,7 +233,7 @@ def _form_from_request(
 ) -> dict[str, object]:
     return {
         "id": config_id,
-        "station_code": station_code,
+        "flow": flow,
         "station_name": station_name,
         "directory_path": directory_path,
         "enabled": "1" if enabled in {"1", "true", "on", "yes"} else "0",
@@ -245,10 +247,8 @@ def _input_from_form(form: dict[str, object]) -> StationDirectoryInput:
         sort_order = int(str(form["sort_order"]).strip() or "0")
     except ValueError as exc:
         raise ConfigError("排序必须是整数") from exc
-    if not str(form["station_code"]).strip():
-        raise ConfigError("上传工站代码不能为空")
     return StationDirectoryInput(
-        station_code=str(form["station_code"]),
+        flow=str(form["flow"]),
         station_name=str(form["station_name"]),
         directory_path=str(form["directory_path"]),
         enabled=str(form["enabled"]) == "1",
@@ -280,6 +280,16 @@ def _render_form(
         },
         status_code=status_code,
     )
+
+
+def _notice_message(notice: str) -> str:
+    messages = {
+        "created": "新增配置保存成功",
+        "updated": "配置修改保存成功",
+        "enabled": "配置启用成功",
+        "disabled": "配置停用成功",
+    }
+    return messages.get(notice, "")
 
 
 def _directory_save_warning(config: WebConfig, form: dict[str, object]) -> str:

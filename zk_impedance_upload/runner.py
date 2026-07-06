@@ -130,7 +130,7 @@ def run_upload_task(
         for index, parsed_file in enumerate(upload_pending, start=1):
             progress(
                 f"正在上传 {index}/{total_uploads}: {parsed_file.filename}, "
-                f"{config.upload.station_field_name}={parsed_file.station_code}"
+                f"flow={parsed_file.flow}"
             )
             result = effective_upload(parsed_file)
             if result.success:
@@ -152,7 +152,6 @@ def run_upload_task(
                             run_id,
                             parsed_file,
                             result,
-                            config.upload.station_field_name,
                         ),
                     )
                 )
@@ -166,7 +165,6 @@ def run_upload_task(
                             run_id,
                             parsed_file,
                             result,
-                            config.upload.station_field_name,
                         ),
                     )
                 )
@@ -236,9 +234,8 @@ def _real_upload_func(config: AppConfig) -> UploadFunc:
             url=config.upload.url,
             timeout_seconds=config.upload.timeout_seconds,
             retry_count=config.upload.retry_count,
-            station_code=parsed_file.station_code,
-            send_station_code=config.upload.send_station_code,
-            station_field_name=config.upload.station_field_name,
+            flow=parsed_file.flow,
+            filePath=parsed_file.filePath,
         )
 
     return _upload
@@ -263,8 +260,8 @@ def _base_entry(run_id: str, parsed_file: ParsedFile) -> dict[str, object]:
         "directory": str(parsed_file.directory),
         "file_size": parsed_file.size,
         "file_mtime": parsed_file.modified_at,
-        "station_code": parsed_file.station_code,
-        "source_dir": parsed_file.source_dir,
+        "flow": parsed_file.flow,
+        "filePath": parsed_file.filePath,
         "region": parsed_file.region,
         "normalized_name": parsed_file.normalized_name,
         "business_key": parsed_file.business_key,
@@ -303,13 +300,11 @@ def _upload_success_entry(
     run_id: str,
     parsed_file: ParsedFile,
     result: UploadResult,
-    station_field_name: str,
 ) -> dict[str, object]:
     entry = _base_entry(run_id, parsed_file)
     entry.update(
         {
             "action": "upload_success",
-            "upload_station_field": station_field_name,
             "http_status": result.status_code,
             "response": result.response,
             "retry_count": result.retry_count,
@@ -322,13 +317,11 @@ def _upload_failed_entry(
     run_id: str,
     parsed_file: ParsedFile,
     result: UploadResult,
-    station_field_name: str,
 ) -> dict[str, object]:
     entry = _base_entry(run_id, parsed_file)
     entry.update(
         {
             "action": "upload_failed",
-            "upload_station_field": station_field_name,
             "http_status": result.status_code,
             "response": result.response,
             "response_text": result.response_text,

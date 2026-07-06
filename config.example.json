@@ -14,9 +14,7 @@
     "max_upload_files": null,
     "dry_run": false,
     "timeout_seconds": 300,
-    "retry_count": 2,
-    "send_station_code": true,
-    "station_field_name": "station_code"
+    "retry_count": 2
   },
   "scan": {
     "recursive": true,
@@ -25,12 +23,12 @@
     "exclude_dirs": ["LOG", "log", "logs", "backup"],
     "targets": [
       {
-        "station_code": "A10",
+        "flow": "A10",
         "dir": "ExampleStationDirectoryA",
         "enabled": true
       },
       {
-        "station_code": "A50",
+        "flow": "A50",
         "dir": "ExampleStationDirectoryB",
         "enabled": true
       }

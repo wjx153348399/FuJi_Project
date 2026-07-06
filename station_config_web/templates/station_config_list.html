@@ -42,7 +42,7 @@
             <tr>
               <th>ID</th>
               <th>状态</th>
-              <th>上传工站代码</th>
+              <th>flow</th>
               <th>显示名称</th>
               <th>目录路径</th>
               <th>目录检测</th>
@@ -63,14 +63,16 @@
                     <span class="badge off">停用</span>
                   {% endif %}
                 </td>
-                <td>{{ row.station_code }}</td>
+                <td>{{ row.flow }}</td>
                 <td>{{ row.station_name or "" }}</td>
                 <td>
                   <div class="path-main">{{ row.directory_path }}</div>
                   <div class="path-sub">{{ row.full_path }}</div>
                 </td>
                 <td>
-                  {% if row.path_is_dir %}
+                  {% if not row.path_checked %}
+                    <span class="badge off">未检测</span>
+                  {% elif row.path_is_dir %}
                     <span class="badge ok">存在</span>
                   {% elif row.path_exists %}
                     <span class="badge warn">不是目录</span>

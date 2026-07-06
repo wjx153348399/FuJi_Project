@@ -14,8 +14,8 @@ class CandidateFile:
     path: Path
     size: int
     modified_at: datetime
-    station_code: str = "UNKNOWN"
-    source_dir: str = ""
+    flow: str = "UNKNOWN"
+    filePath: str = ""
 
 
 @dataclass
@@ -48,7 +48,7 @@ def _effective_targets(scan_config: ScanConfig) -> list[ScanTargetConfig]:
     if configured_targets:
         return configured_targets
     return [
-        ScanTargetConfig(station_code="UNKNOWN", dir=target_dir, enabled=True)
+        ScanTargetConfig(flow="UNKNOWN", dir=target_dir, enabled=True)
         for target_dir in scan_config.target_dirs or []
     ]
 
@@ -81,8 +81,8 @@ def _scan_directory(
                     path=entry,
                     size=stat.st_size,
                     modified_at=_mtime_to_datetime(stat.st_mtime),
-                    station_code=target.station_code,
-                    source_dir=target.dir,
+                    flow=target.flow,
+                    filePath=str(entry),
                 )
             )
 

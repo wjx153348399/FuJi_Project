@@ -28,8 +28,6 @@ class ConfigTest(unittest.TestCase):
                             "dry_run": False,
                             "timeout_seconds": 60,
                             "retry_count": 2,
-                            "send_station_code": True,
-                            "station_field_name": "stationCode",
                         },
                         "scan": {
                             "recursive": True,
@@ -58,8 +56,6 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(config.share.root, "\\\\10.0.8.252\\ProductionFieldFile 现场公共盘\\阻抗")
         self.assertEqual(config.log.dir, "\\\\10.0.8.252\\File\\ZK_LOG")
         self.assertEqual(config.upload.day_offset, 1)
-        self.assertTrue(config.upload.send_station_code)
-        self.assertEqual(config.upload.station_field_name, "stationCode")
         self.assertEqual(config.scan.extensions, [".xls", ".xlsx"])
         self.assertIn("ผลิตภัณฑ์สำเร็จรูปCP-阻抗", config.scan.target_dirs)
         self.assertFalse(config.watch.enabled)
@@ -141,8 +137,8 @@ class ConfigTest(unittest.TestCase):
                         "upload": {"url": "http://example.test/upload"},
                         "scan": {
                             "targets": [
-                                {"station_code": "A10", "dir": "station-a"},
-                                {"station_code": "A50", "dir": "station-b", "enabled": False},
+                                {"flow": "A10", "dir": "station-a"},
+                                {"flow": "A50", "dir": "station-b", "enabled": False},
                             ]
                         },
                     }
@@ -152,11 +148,31 @@ class ConfigTest(unittest.TestCase):
 
             config = load_config(config_path)
 
-        self.assertEqual(config.scan.targets[0].station_code, "A10")
+        self.assertEqual(config.scan.targets[0].flow, "A10")
         self.assertEqual(config.scan.targets[0].dir, "station-a")
         self.assertTrue(config.scan.targets[0].enabled)
-        self.assertEqual(config.scan.targets[1].station_code, "A50")
+        self.assertEqual(config.scan.targets[1].flow, "A50")
         self.assertFalse(config.scan.targets[1].enabled)
+
+    def test_loads_station_directory_targets_with_blank_flow(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config_path = Path(tmp_dir) / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "share": {"root": "\\\\server\\share", "username": "IT", "password": "FQCIT"},
+                        "log": {"dir": "\\\\server\\log"},
+                        "upload": {"url": "http://example.test/upload"},
+                        "scan": {"targets": [{"dir": "station-a"}, {"flow": " ", "dir": "station-b"}]},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            config = load_config(config_path)
+
+        self.assertEqual(config.scan.targets[0].flow, "")
+        self.assertEqual(config.scan.targets[1].flow, "")
 
     def test_duplicate_station_target_dir_raises_clear_error(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -169,8 +185,8 @@ class ConfigTest(unittest.TestCase):
                         "upload": {"url": "http://example.test/upload"},
                         "scan": {
                             "targets": [
-                                {"station_code": "A10", "dir": "station-a"},
-                                {"station_code": "A50", "dir": "station-a"},
+                                {"flow": "A10", "dir": "station-a"},
+                                {"flow": "A50", "dir": "station-a"},
                             ]
                         },
                     }

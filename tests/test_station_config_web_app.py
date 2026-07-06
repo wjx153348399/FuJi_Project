@@ -4,11 +4,21 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from station_config_web.app import _directory_save_warning
+from station_config_web.app import _directory_save_warning, _notice_message
 from station_config_web.config import AuthConfig, ServerConfig, ShareConfig, WebConfig, WebDbConfig
 
 
 class StationConfigWebAppTest(unittest.TestCase):
+    def test_notice_message_maps_known_save_results(self):
+        self.assertEqual(_notice_message("created"), "新增配置保存成功")
+        self.assertEqual(_notice_message("updated"), "配置修改保存成功")
+        self.assertEqual(_notice_message("enabled"), "配置启用成功")
+        self.assertEqual(_notice_message("disabled"), "配置停用成功")
+
+    def test_notice_message_ignores_unknown_values(self):
+        self.assertEqual(_notice_message("bad"), "")
+        self.assertEqual(_notice_message(""), "")
+
     def test_directory_save_warning_allows_existing_directory(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             Path(tmp_dir, "target").mkdir()

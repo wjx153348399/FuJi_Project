@@ -106,19 +106,19 @@ python run_watcher.py --config config.json
 
 ### 工站目录绑定
 
-第一阶段通过 `scan.targets` 维护“工站代码 -> 目录位置”的绑定关系：
+通过 `scan.targets` 维护“flow -> 目录位置”的绑定关系：
 
 ```json
 {
   "scan": {
     "targets": [
       {
-        "station_code": "A10",
+        "flow": "A10",
         "dir": "ExampleStationDirectoryA",
         "enabled": true
       },
       {
-        "station_code": "A50",
+        "flow": "A50",
         "dir": "ExampleStationDirectoryB",
         "enabled": true
       }
@@ -127,20 +127,17 @@ python run_watcher.py --config config.json
 }
 ```
 
-`dir` 是相对 `share.root` 的目录路径。程序扫描到该目录下的 Excel 文件后，会自动把对应的 `station_code` 写入上传请求、上传日志和历史成功记录。
+`dir` 是相对 `share.root` 的目录路径。程序扫描到该目录下的 Excel 文件后，会自动把对应的 `flow` 写入上传请求、上传日志和历史成功记录。
 
-上传给后端的字段名可以通过 `upload.station_field_name` 配置，默认值为 `station_code`：
+上传给后端的 multipart 字段名统一为：
 
-```json
-{
-  "upload": {
-    "send_station_code": true,
-    "station_field_name": "station_code"
-  }
-}
+```text
+file=<Excel 文件>
+flow=<工站代码，可选，有值才提交>
+filePath=<文件完整路径，可选，有值才提交>
 ```
 
-如果后端字段名后续确定为 `stationCode` 或其他名称，只需要修改 `station_field_name`。如果后端暂时不接收工站字段，可以先设置 `send_station_code=false`，本地日志和去重仍会保留 `station_code`。
+项目内不再保留上传字段名兼容配置，`flow` 和 `filePath` 是全项目统一字段。`file` 是必传文件字段；`flow`、`filePath` 按后端可选规则处理，有值才随请求提交。
 
 兼容旧配置 `scan.target_dirs`；如果同时配置了 `scan.targets`，程序优先使用 `scan.targets`。
 

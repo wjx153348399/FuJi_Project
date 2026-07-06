@@ -111,7 +111,7 @@ class ScannerTest(unittest.TestCase):
         self.assertEqual(result.missing_dirs, [])
         self.assertEqual(result.failed_dirs, [])
 
-    def test_scan_targets_bind_station_code_to_candidate_files(self):
+    def test_scan_targets_bind_flow_to_candidate_files(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             enabled_dir = root / "station-a" / "OUTER"
@@ -129,8 +129,8 @@ class ScannerTest(unittest.TestCase):
                 root=root,
                 scan_config=ScanConfig(
                     targets=[
-                        ScanTargetConfig(station_code="A10", dir="station-a"),
-                        ScanTargetConfig(station_code="A50", dir="station-b", enabled=False),
+                        ScanTargetConfig(flow="A10", dir="station-a"),
+                        ScanTargetConfig(flow="A50", dir="station-b", enabled=False),
                     ],
                     recursive=True,
                 ),
@@ -140,8 +140,8 @@ class ScannerTest(unittest.TestCase):
             )
 
         self.assertEqual([item.path.name for item in result.candidates], ["enabled.xlsx"])
-        self.assertEqual(result.candidates[0].station_code, "A10")
-        self.assertEqual(result.candidates[0].source_dir, "station-a")
+        self.assertEqual(result.candidates[0].flow, "A10")
+        self.assertEqual(result.candidates[0].filePath, str(enabled_file))
 
 
 def _set_mtime(path: Path, timestamp: str) -> None:

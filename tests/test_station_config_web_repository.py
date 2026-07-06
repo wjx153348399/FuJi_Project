@@ -54,7 +54,7 @@ class FakeConnection:
 
 class Row:
     id = 1
-    station_code = "UNKNOWN"
+    flow = "UNKNOWN"
     station_name = "LXD"
     directory_path = "target"
     enabled = True
@@ -67,18 +67,24 @@ class Row:
 
 
 class StationConfigWebRepositoryTest(unittest.TestCase):
-    def test_list_configs_builds_rows_with_full_path_state(self):
+    def test_list_configs_builds_rows_without_checking_network_path(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             Path(tmp_dir, "target").mkdir()
             config = _config(tmp_dir)
             connection = FakeConnection(rows=[Row()])
 
-            with patch("station_config_web.repository._connect", return_value=connection):
+            with patch("station_config_web.repository._connect", return_value=connection), patch(
+                "station_config_web.repository.Path.exists",
+                side_effect=AssertionError("list page must not touch shared paths"),
+            ):
                 rows = StationDirectoryRepository(config).list_configs(status="enabled", keyword="LXD")
 
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0].station_code, "UNKNOWN")
-        self.assertTrue(rows[0].path_is_dir)
+        self.assertEqual(rows[0].flow, "UNKNOWN")
+        self.assertFalse(rows[0].path_checked)
+        self.assertFalse(rows[0].path_exists)
+        self.assertFalse(rows[0].path_is_dir)
+        self.assertTrue(rows[0].full_path.endswith("target"))
         self.assertIn("WHERE enabled = 1", connection.cursor_obj.sql)
         self.assertEqual(connection.cursor_obj.params, ["%LXD%", "%LXD%", "%LXD%", "%LXD%"])
 
@@ -96,7 +102,7 @@ class StationConfigWebRepositoryTest(unittest.TestCase):
         ):
             StationDirectoryRepository(_config()).create_config(
                 StationDirectoryInput(
-                    station_code=" AFC ",
+                    flow=" AFC ",
                     station_name=" LXD ",
                     directory_path=r"folder/target",
                     enabled=True,
@@ -113,11 +119,17 @@ class StationConfigWebRepositoryTest(unittest.TestCase):
         )
         self.assertTrue(write_connection.committed)
 
-    def test_create_config_rejects_blank_station_code(self):
-        with self.assertRaisesRegex(ConfigError, "上传工站代码"):
+    def test_create_config_allows_blank_flow(self):
+        unique_connection = FakeConnection(one=None)
+        write_connection = FakeConnection()
+
+        with patch(
+            "station_config_web.repository._connect",
+            side_effect=[unique_connection, write_connection],
+        ):
             StationDirectoryRepository(_config()).create_config(
                 StationDirectoryInput(
-                    station_code=" ",
+                    flow=" ",
                     station_name="LXD",
                     directory_path="target",
                     enabled=True,
@@ -126,6 +138,9 @@ class StationConfigWebRepositoryTest(unittest.TestCase):
                 )
             )
 
+        self.assertEqual(write_connection.cursor_obj.params[0], "")
+        self.assertTrue(write_connection.committed)
+
     def test_create_config_rejects_duplicate_directory_path(self):
         duplicate_connection = FakeConnection(one=object())
 
@@ -133,7 +148,7 @@ class StationConfigWebRepositoryTest(unittest.TestCase):
             with self.assertRaisesRegex(ConfigError, "已存在"):
                 StationDirectoryRepository(_config()).create_config(
                     StationDirectoryInput(
-                        station_code="LXD",
+                        flow="LXD",
                         station_name=None,
                         directory_path="target",
                         enabled=True,
@@ -153,7 +168,7 @@ class StationConfigWebRepositoryTest(unittest.TestCase):
             StationDirectoryRepository(_config()).update_config(
                 8,
                 StationDirectoryInput(
-                    station_code="A10",
+                    flow="A10",
                     station_name="OUTER",
                     directory_path="outer",
                     enabled=False,

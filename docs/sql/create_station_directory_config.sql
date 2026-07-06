@@ -1,6 +1,6 @@
 CREATE TABLE station_directory_config (
   id BIGINT IDENTITY(1,1) NOT NULL CONSTRAINT PK_station_directory_config PRIMARY KEY,
-  station_code NVARCHAR(50) NOT NULL,
+  flow NVARCHAR(50) NOT NULL,
   station_name NVARCHAR(100) NULL,
   directory_path NVARCHAR(500) NOT NULL,
   enabled BIT NOT NULL CONSTRAINT DF_station_directory_config_enabled DEFAULT (1),
@@ -15,8 +15,8 @@ CREATE TABLE station_directory_config (
 CREATE UNIQUE INDEX UX_station_directory_config_directory_path
   ON station_directory_config (directory_path);
 
-CREATE INDEX IX_station_directory_config_station_code
-  ON station_directory_config (station_code);
+CREATE INDEX IX_station_directory_config_flow
+  ON station_directory_config (flow);
 
 CREATE INDEX IX_station_directory_config_enabled_sort
   ON station_directory_config (enabled, sort_order, id);

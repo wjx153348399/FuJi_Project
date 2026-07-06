@@ -33,8 +33,8 @@ class FingerprintTest(unittest.TestCase):
         )
 
         self.assertEqual(record["filename"], "example.xlsx")
-        self.assertEqual(record["station_code"], "A10")
-        self.assertEqual(record["source_dir"], "target")
+        self.assertEqual(record["flow"], "A10")
+        self.assertEqual(record["filePath"], "example.xlsx")
         self.assertEqual(record["file_hash"], "abc123")
         self.assertEqual(record["fallback_key"], parsed.fallback_key)
         self.assertEqual(record["uploaded_at"], "2026-06-14 08:01:00")
@@ -93,8 +93,8 @@ def _parsed_file(path: Path, normalized_name: str, size: int) -> ParsedFile:
         directory=path.parent,
         size=size,
         modified_at="2026-06-13 10:00:00",
-        station_code="A10",
-        source_dir="target",
+        flow="A10",
+        filePath=str(path),
         region="OUTER",
         normalized_name=normalized_name,
         business_key="",

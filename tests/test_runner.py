@@ -220,7 +220,7 @@ class RunnerTest(unittest.TestCase):
         self.assertIn("正在上传 1/1", joined)
         self.assertIn("上传任务汇总", joined)
 
-    def test_run_upload_task_writes_station_code_to_logs_and_history(self):
+    def test_run_upload_task_writes_flow_and_file_path_to_logs_and_history(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir) / "share"
             log_dir = Path(tmp_dir) / "logs"
@@ -231,7 +231,7 @@ class RunnerTest(unittest.TestCase):
             _set_mtime(file_path, "2026-06-13 10:00:00")
 
             run_upload_task(
-                config=_config(root, log_dir, targets=[ScanTargetConfig(station_code="A10", dir="station-a")]),
+                config=_config(root, log_dir, targets=[ScanTargetConfig(flow="A10", dir="station-a")]),
                 now=datetime(2026, 6, 14, 8, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
                 upload_func=_success_upload,
             )
@@ -240,13 +240,13 @@ class RunnerTest(unittest.TestCase):
             history = json.loads((log_dir / "uploaded_file_fingerprints.json").read_text(encoding="utf-8"))
             history_entry = next(iter(history.values()))
 
-        self.assertEqual(upload_entry["station_code"], "A10")
-        self.assertEqual(upload_entry["source_dir"], "station-a")
-        self.assertEqual(history_entry["station_code"], "A10")
-        self.assertEqual(history_entry["source_dir"], "station-a")
+        self.assertEqual(upload_entry["flow"], "A10")
+        self.assertEqual(upload_entry["filePath"], str(file_path))
+        self.assertEqual(history_entry["flow"], "A10")
+        self.assertEqual(history_entry["filePath"], str(file_path))
         self.assertTrue(history_entry["fallback_key"].startswith("FALLBACK|A10|"))
 
-    def test_real_upload_function_receives_station_code_and_field_name(self):
+    def test_real_upload_function_receives_flow_and_file_path(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir) / "share"
             log_dir = Path(tmp_dir) / "logs"
@@ -273,19 +273,57 @@ class RunnerTest(unittest.TestCase):
                     config=_config(
                         root,
                         log_dir,
-                        targets=[ScanTargetConfig(station_code="A10", dir="station-a")],
-                        station_field_name="stationCode",
+                        targets=[ScanTargetConfig(flow="A10", dir="station-a")],
                     ),
                     now=datetime(2026, 6, 14, 8, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
                 )
 
             upload_entry = json.loads((log_dir / "upload_log_2026-06-14.jsonl").read_text(encoding="utf-8"))
 
-        self.assertEqual(upload_calls[0]["station_code"], "A10")
-        self.assertEqual(upload_calls[0]["station_field_name"], "stationCode")
-        self.assertTrue(upload_calls[0]["send_station_code"])
-        self.assertEqual(upload_entry["station_code"], "A10")
-        self.assertEqual(upload_entry["upload_station_field"], "stationCode")
+        self.assertEqual(upload_calls[0]["flow"], "A10")
+        self.assertEqual(upload_calls[0]["filePath"], str(file_path))
+        self.assertEqual(upload_entry["flow"], "A10")
+        self.assertEqual(upload_entry["filePath"], str(file_path))
+
+    def test_real_upload_function_allows_blank_flow(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir) / "share"
+            log_dir = Path(tmp_dir) / "logs"
+            target_dir = root / "station-a" / "OUTER"
+            target_dir.mkdir(parents=True)
+            file_path = target_dir / "example.xlsx"
+            file_path.write_bytes(b"excel")
+            _set_mtime(file_path, "2026-06-13 10:00:00")
+            upload_calls = []
+
+            def fake_upload_file(**kwargs):
+                upload_calls.append(kwargs)
+                return UploadResult(
+                    success=True,
+                    status_code=200,
+                    response={"ok": True},
+                    response_text='{"ok":true}',
+                    error="",
+                    retry_count=0,
+                )
+
+            with patch("zk_impedance_upload.runner.upload_file", side_effect=fake_upload_file):
+                run_upload_task(
+                    config=_config(
+                        root,
+                        log_dir,
+                        targets=[ScanTargetConfig(flow="", dir="station-a")],
+                    ),
+                    now=datetime(2026, 6, 14, 8, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+                )
+
+            upload_entry = json.loads((log_dir / "upload_log_2026-06-14.jsonl").read_text(encoding="utf-8"))
+
+        self.assertEqual(upload_calls[0]["flow"], "")
+        self.assertEqual(upload_calls[0]["filePath"], str(file_path))
+        self.assertEqual(upload_entry["flow"], "")
+        self.assertEqual(upload_entry["filePath"], str(file_path))
+        self.assertIn(str(file_path), upload_entry["fallback_key"])
 
 
 def _config(
@@ -295,7 +333,6 @@ def _config(
     watch_enabled: bool = False,
     max_upload_files: Optional[int] = None,
     targets: Optional[list[ScanTargetConfig]] = None,
-    station_field_name: str = "station_code",
 ) -> AppConfig:
     return AppConfig(
         share=ShareConfig(root=str(root), username="IT", password="FQCIT"),
@@ -307,7 +344,6 @@ def _config(
             dry_run=dry_run,
             timeout_seconds=60,
             retry_count=0,
-            station_field_name=station_field_name,
         ),
         scan=ScanConfig(
             target_dirs=["target"],

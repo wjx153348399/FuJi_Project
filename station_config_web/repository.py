@@ -15,7 +15,7 @@ _TABLE_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9
 @dataclass(frozen=True)
 class StationDirectoryRow:
     id: int
-    station_code: str
+    flow: str
     station_name: str | None
     directory_path: str
     enabled: bool
@@ -26,13 +26,14 @@ class StationDirectoryRow:
     updated_by: str | None
     updated_at: str
     full_path: str
+    path_checked: bool
     path_exists: bool
     path_is_dir: bool
 
 
 @dataclass(frozen=True)
 class StationDirectoryInput:
-    station_code: str
+    flow: str
     station_name: str | None
     directory_path: str
     enabled: bool
@@ -66,7 +67,7 @@ class StationDirectoryRepository:
         keyword = keyword.strip()
         if keyword:
             where_clauses.append(
-                "(station_code LIKE ? OR station_name LIKE ? OR directory_path LIKE ? OR remark LIKE ?)"
+                "(flow LIKE ? OR station_name LIKE ? OR directory_path LIKE ? OR remark LIKE ?)"
             )
             pattern = f"%{keyword}%"
             params.extend([pattern, pattern, pattern, pattern])
@@ -76,7 +77,7 @@ class StationDirectoryRepository:
         sql = f"""
             SELECT
               id,
-              station_code,
+              flow,
               station_name,
               directory_path,
               enabled,
@@ -99,7 +100,7 @@ class StationDirectoryRepository:
         sql = f"""
             SELECT
               id,
-              station_code,
+              flow,
               station_name,
               directory_path,
               enabled,
@@ -122,13 +123,13 @@ class StationDirectoryRepository:
         table_name = _validated_table_name(self.config.db.table)
         sql = f"""
             INSERT INTO {table_name}
-              (station_code, station_name, directory_path, enabled, sort_order, remark, created_by, updated_by)
+              (flow, station_name, directory_path, enabled, sort_order, remark, created_by, updated_by)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """
         with _connect(self.config.db) as connection:
             connection.cursor().execute(
                 sql,
-                clean_data.station_code,
+                clean_data.flow,
                 clean_data.station_name,
                 clean_data.directory_path,
                 1 if clean_data.enabled else 0,
@@ -146,7 +147,7 @@ class StationDirectoryRepository:
         sql = f"""
             UPDATE {table_name}
             SET
-              station_code = ?,
+              flow = ?,
               station_name = ?,
               directory_path = ?,
               enabled = ?,
@@ -159,7 +160,7 @@ class StationDirectoryRepository:
             cursor = connection.cursor()
             cursor.execute(
                 sql,
-                clean_data.station_code,
+                clean_data.flow,
                 clean_data.station_name,
                 clean_data.directory_path,
                 1 if clean_data.enabled else 0,
@@ -208,10 +209,9 @@ class StationDirectoryRepository:
 
     def _build_row(self, row: object) -> StationDirectoryRow:
         full_path = Path(self.config.share.root) / row.directory_path
-        path_exists = full_path.exists()
         return StationDirectoryRow(
             id=int(row.id),
-            station_code=str(row.station_code),
+            flow=str(row.flow),
             station_name=row.station_name,
             directory_path=str(row.directory_path),
             enabled=bool(row.enabled),
@@ -222,21 +222,20 @@ class StationDirectoryRepository:
             updated_by=row.updated_by,
             updated_at=str(row.updated_at),
             full_path=str(full_path),
-            path_exists=path_exists,
-            path_is_dir=full_path.is_dir() if path_exists else False,
+            path_checked=False,
+            path_exists=False,
+            path_is_dir=False,
         )
 
 
 def validate_station_directory_input(data: StationDirectoryInput) -> StationDirectoryInput:
     directory_path = validate_relative_directory_path(data.directory_path)
-    station_code = data.station_code.strip()
-    if not station_code:
-        raise ConfigError("上传工站代码不能为空")
+    flow = data.flow.strip()
     station_name = _clean_optional_text(data.station_name)
     remark = _clean_optional_text(data.remark)
     updated_by = _clean_optional_text(data.updated_by) or "web"
     return StationDirectoryInput(
-        station_code=station_code,
+        flow=flow,
         station_name=station_name,
         directory_path=directory_path,
         enabled=bool(data.enabled),

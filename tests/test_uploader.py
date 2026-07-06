@@ -53,7 +53,8 @@ class UploaderTest(unittest.TestCase):
                 url="http://example.test/upload",
                 timeout_seconds=60,
                 retry_count=0,
-                station_code="A10",
+                flow="A10",
+                filePath=str(file_path),
                 session=session,
             )
 
@@ -63,10 +64,10 @@ class UploaderTest(unittest.TestCase):
         self.assertEqual(result.retry_count, 0)
         self.assertEqual(session.calls[0]["file_name"], "阻抗.xlsx")
         self.assertEqual(session.calls[0]["file_bytes"], b"excel")
-        self.assertEqual(session.calls[0]["data"], {"station_code": "A10"})
+        self.assertEqual(session.calls[0]["data"], {"flow": "A10", "filePath": str(file_path)})
         self.assertEqual(session.calls[0]["timeout"], 60)
 
-    def test_uploads_station_code_with_configured_field_name(self):
+    def test_uploads_flow_and_file_path_when_present(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             file_path = Path(tmp_dir) / "example.xlsx"
             file_path.write_bytes(b"excel")
@@ -77,14 +78,14 @@ class UploaderTest(unittest.TestCase):
                 url="http://example.test/upload",
                 timeout_seconds=60,
                 retry_count=0,
-                station_code="A10",
-                station_field_name="stationCode",
+                flow="A10",
+                filePath=str(file_path),
                 session=session,
             )
 
-        self.assertEqual(session.calls[0]["data"], {"stationCode": "A10"})
+        self.assertEqual(session.calls[0]["data"], {"flow": "A10", "filePath": str(file_path)})
 
-    def test_can_disable_station_code_upload_field(self):
+    def test_omits_optional_flow_and_file_path_when_blank(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             file_path = Path(tmp_dir) / "example.xlsx"
             file_path.write_bytes(b"excel")
@@ -95,12 +96,30 @@ class UploaderTest(unittest.TestCase):
                 url="http://example.test/upload",
                 timeout_seconds=60,
                 retry_count=0,
-                station_code="A10",
-                send_station_code=False,
+                flow=" ",
+                filePath="",
                 session=session,
             )
 
         self.assertEqual(session.calls[0]["data"], {})
+
+    def test_omits_optional_flow_only_when_blank(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            file_path = Path(tmp_dir) / "example.xlsx"
+            file_path.write_bytes(b"excel")
+            session = FakeSession([FakeResponse(200)])
+
+            upload_file(
+                file_path=file_path,
+                url="http://example.test/upload",
+                timeout_seconds=60,
+                retry_count=0,
+                flow=" ",
+                filePath=str(file_path),
+                session=session,
+            )
+
+        self.assertEqual(session.calls[0]["data"], {"filePath": str(file_path)})
 
     def test_retries_request_exception_then_succeeds(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -113,6 +132,8 @@ class UploaderTest(unittest.TestCase):
                 url="http://example.test/upload",
                 timeout_seconds=30,
                 retry_count=1,
+                flow="A10",
+                filePath=str(file_path),
                 session=session,
             )
 
@@ -131,6 +152,8 @@ class UploaderTest(unittest.TestCase):
                 url="http://example.test/upload",
                 timeout_seconds=30,
                 retry_count=0,
+                flow="A10",
+                filePath=str(file_path),
                 session=session,
             )
 
@@ -158,6 +181,8 @@ class UploaderTest(unittest.TestCase):
                 url="http://example.test/upload",
                 timeout_seconds=30,
                 retry_count=0,
+                flow="A10",
+                filePath=str(file_path),
                 session=session,
             )
 
@@ -177,6 +202,8 @@ class UploaderTest(unittest.TestCase):
                 url="http://example.test/upload",
                 timeout_seconds=30,
                 retry_count=1,
+                flow="A10",
+                filePath=str(file_path),
                 session=session,
             )
 

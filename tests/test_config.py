@@ -44,6 +44,9 @@ class ConfigTest(unittest.TestCase):
                             "notice_mode": "log_and_daily_summary",
                             "poll_interval_seconds": 5,
                             "debounce_seconds": 5,
+                            "stable_check_seconds": 2,
+                            "stable_check_attempts": 3,
+                            "queue_max_workers": 1,
                         },
                     },
                     ensure_ascii=False,
@@ -61,6 +64,9 @@ class ConfigTest(unittest.TestCase):
         self.assertFalse(config.watch.enabled)
         self.assertEqual(config.watch.poll_interval_seconds, 5)
         self.assertEqual(config.watch.debounce_seconds, 5)
+        self.assertEqual(config.watch.stable_check_seconds, 2)
+        self.assertEqual(config.watch.stable_check_attempts, 3)
+        self.assertEqual(config.watch.queue_max_workers, 1)
         self.assertEqual(config.station_config.source, "json")
         self.assertEqual(config.station_config.db.driver, "sqlserver")
         self.assertEqual(config.station_config.db.port, 1433)

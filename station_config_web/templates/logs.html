@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <title>Upload Logs</title>
+    <link rel="stylesheet" href="/static/style.css?v=realtime1">
+  </head>
+  <body>
+    <main class="page">
+      <header class="toolbar">
+        <div>
+          <h1>Upload Logs</h1>
+          <p>{{ config.log.dir }}</p>
+        </div>
+        <nav class="nav-links">
+          <a class="small-link" href="/dashboard">Dashboard</a>
+          <a class="small-link" href="/station-config">Station Config</a>
+        </nav>
+      </header>
+
+      {% if log_error %}
+        <section class="notice error">
+          Log directory error: {{ log_error }}
+        </section>
+      {% endif %}
+
+      <form class="filters" method="get" action="/logs">
+        <select name="type">
+          <option value="all" {% if type == "all" %}selected{% endif %}>All</option>
+          <option value="upload" {% if type == "upload" %}selected{% endif %}>Upload</option>
+          <option value="watch" {% if type == "watch" %}selected{% endif %}>Watch</option>
+        </select>
+        <select name="status">
+          <option value="all" {% if status == "all" %}selected{% endif %}>All Status</option>
+          <option value="success" {% if status == "success" %}selected{% endif %}>Success</option>
+          <option value="failed" {% if status == "failed" %}selected{% endif %}>Failed</option>
+          <option value="skipped" {% if status == "skipped" %}selected{% endif %}>Skipped</option>
+          <option value="pending" {% if status == "pending" %}selected{% endif %}>Pending</option>
+        </select>
+        <input name="keyword" value="{{ keyword }}" placeholder="file/path/flow/error">
+        <button type="submit">Search</button>
+      </form>
+
+      <section class="summary">
+        <span>Rows: {{ logs|length }}</span>
+      </section>
+
+      <section class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Status</th>
+              <th>Action</th>
+              <th>File</th>
+              <th>flow</th>
+              <th>HTTP</th>
+              <th>Retry</th>
+              <th>Message</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in logs %}
+              <tr>
+                <td>{{ item.log_type }}</td>
+                <td><span class="badge {{ 'error' if item.status == 'failed' else 'ok' if item.status == 'success' else 'off' }}">{{ item.status }}</span></td>
+                <td>{{ item.action }}</td>
+                <td>
+                  <div class="path-main">{{ item.filename }}</div>
+                  <div class="path-sub">{{ item.path }}</div>
+                </td>
+                <td>{{ item.flow }}</td>
+                <td>{{ item.http_status or "" }}</td>
+                <td>{{ item.retry_count if item.retry_count is not none else "" }}</td>
+                <td>{{ item.message }}</td>
+              </tr>
+            {% else %}
+              <tr>
+                <td colspan="8" class="empty">No logs</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    </main>
+  </body>
+</html>

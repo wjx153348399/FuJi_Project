@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from zk_impedance_upload.config import AppConfig, LogConfig, ScanConfig, ShareConfig, UploadConfig, WatchConfig
 from zk_impedance_upload.log_store import LogStore
+from zk_impedance_upload.uploader import UploadResult
 from zk_impedance_upload.watcher import (
     EventDebouncer,
     WatchEvent,
@@ -137,6 +138,29 @@ class WatcherTest(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertIn("watch_modified", events)
 
+    def test_run_watch_service_does_not_upload_existing_excel_on_start(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir) / "share"
+            target_dir = root / "target"
+            target_dir.mkdir(parents=True)
+            existing_file = target_dir / "existing.xlsx"
+            existing_file.write_text("excel", encoding="utf-8")
+            log_dir = Path(tmp_dir) / "logs"
+            config = _build_app_config(root, log_dir)
+            uploaded = []
+
+            first_exit = run_watch_service(
+                config,
+                max_iterations=0,
+                sleep_func=lambda seconds: None,
+                now_func=lambda: datetime(2026, 6, 14, 8, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+                upload_func=lambda parsed_file: _record_upload(parsed_file, uploaded),
+            )
+
+        self.assertEqual(first_exit, 0)
+        self.assertEqual(uploaded, [])
+        self.assertFalse((log_dir / "upload_log_2026-06-14.jsonl").exists())
+
     def test_run_watch_service_ensures_share_access_before_snapshot(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir) / "share"
@@ -233,6 +257,18 @@ def _loads_json_line(content: str) -> dict:
     import json
 
     return json.loads(content)
+
+
+def _record_upload(parsed_file, uploaded):
+    uploaded.append(parsed_file.filename)
+    return UploadResult(
+        success=True,
+        status_code=200,
+        response={"ok": True},
+        response_text='{"ok":true}',
+        error="",
+        retry_count=0,
+    )
 
 
 if __name__ == "__main__":

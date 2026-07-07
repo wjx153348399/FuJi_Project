@@ -43,14 +43,51 @@ def scan_files(root: str | Path, scan_config: ScanConfig, date_window: DateWindo
     return result
 
 
+def build_candidate_for_path(
+    root: str | Path,
+    scan_config: ScanConfig,
+    path: str | Path,
+    date_window: DateWindow | None = None,
+) -> CandidateFile | None:
+    root_path = Path(root)
+    file_path = Path(path)
+    for target in _effective_targets(scan_config):
+        target_path = root_path / target.dir
+        if not _is_under_directory(file_path, target_path):
+            continue
+        try:
+            relative_path = file_path.relative_to(target_path)
+        except ValueError:
+            relative_path = Path()
+        if any(part in set(scan_config.exclude_dirs or []) for part in relative_path.parts[:-1]):
+            return None
+        if not _is_candidate_file(file_path, scan_config, date_window):
+            return None
+        try:
+            stat = file_path.stat()
+        except OSError:
+            return None
+        return CandidateFile(
+            path=file_path,
+            size=stat.st_size,
+            modified_at=_mtime_to_datetime(stat.st_mtime),
+            flow=target.flow,
+            filePath=str(file_path),
+        )
+    return None
+
+
 def _effective_targets(scan_config: ScanConfig) -> list[ScanTargetConfig]:
     configured_targets = [target for target in scan_config.targets or [] if target.enabled]
     if configured_targets:
         return configured_targets
-    return [
-        ScanTargetConfig(flow="UNKNOWN", dir=target_dir, enabled=True)
-        for target_dir in scan_config.target_dirs or []
-    ]
+    target_dirs = scan_config.target_dirs or []
+    if target_dirs:
+        return [
+            ScanTargetConfig(flow="UNKNOWN", dir=target_dir, enabled=True)
+            for target_dir in target_dirs
+        ]
+    return [ScanTargetConfig(flow="UNKNOWN", dir=".", enabled=True)]
 
 
 def _scan_directory(
@@ -87,7 +124,7 @@ def _scan_directory(
             )
 
 
-def _is_candidate_file(path: Path, scan_config: ScanConfig, date_window: DateWindow) -> bool:
+def _is_candidate_file(path: Path, scan_config: ScanConfig, date_window: DateWindow | None) -> bool:
     if not path.is_file():
         return False
     if any(path.name.startswith(prefix) for prefix in scan_config.exclude_prefixes or []):
@@ -99,6 +136,8 @@ def _is_candidate_file(path: Path, scan_config: ScanConfig, date_window: DateWin
         modified_at = _mtime_to_datetime(path.stat().st_mtime)
     except OSError:
         return False
+    if date_window is None:
+        return True
     return date_window.contains(modified_at)
 
 
@@ -108,3 +147,11 @@ def _is_excluded_dir(path: Path, scan_config: ScanConfig) -> bool:
 
 def _mtime_to_datetime(mtime: float) -> datetime:
     return datetime.fromtimestamp(mtime, tz=ZoneInfo("Asia/Shanghai")).astimezone(SHANGHAI_TZ)
+
+
+def _is_under_directory(path: Path, directory: Path) -> bool:
+    try:
+        path.resolve(strict=False).relative_to(directory.resolve(strict=False))
+        return True
+    except ValueError:
+        return False

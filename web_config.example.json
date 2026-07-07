@@ -14,11 +14,15 @@
     "connect_timeout_seconds": 5
   },
   "share": {
-    "root": "\\\\10.0.8.252\\ProductionFieldFile 现场公共盘\\阻抗"
+    "root": "\\\\10.0.8.252\\File\\Impedance",
+    "username": "YOUR_SHARE_USERNAME",
+    "password": "YOUR_SHARE_PASSWORD"
+  },
+  "log": {
+    "dir": "\\\\10.0.8.252\\File\\ZK_LOG"
   },
   "auth": {
     "username": "admin",
     "password": "CHANGE_ME"
   }
 }
-

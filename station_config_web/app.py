@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
 
 from fastapi import FastAPI, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -10,6 +11,8 @@ from fastapi.templating import Jinja2Templates
 from station_config_web.config import WebConfig, load_web_config
 from station_config_web.repository import StationDirectoryInput, StationDirectoryRepository
 from zk_impedance_upload.exceptions import ConfigError
+from zk_impedance_upload.log_store import LogStore
+from zk_impedance_upload.share_auth import get_share_root
 
 
 _BASE_DIR = Path(__file__).resolve().parent
@@ -24,7 +27,72 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
 
     @app.get("/")
     def index() -> RedirectResponse:
-        return RedirectResponse(url="/station-config")
+        return RedirectResponse(url="/dashboard")
+
+    @app.get("/dashboard", response_class=HTMLResponse)
+    def dashboard(request: Request) -> HTMLResponse:
+        status, logs, log_error = _read_log_view(config, limit=20)
+        return _TEMPLATES.TemplateResponse(
+            request,
+            "dashboard.html",
+            {"config": config, "status": status, "logs": logs, "log_error": log_error},
+        )
+
+    @app.get("/logs", response_class=HTMLResponse)
+    def logs_page(
+        request: Request,
+        type: str = Query("all"),
+        status: str = Query("all"),
+        keyword: str = Query(""),
+    ) -> HTMLResponse:
+        logs = []
+        log_error = ""
+        try:
+            _ensure_web_log_share_access(config)
+            logs = LogStore(config.log.dir).read_recent_logs(log_type=type, status=status, keyword=keyword, limit=200)
+        except (ConfigError, OSError) as exc:
+            log_error = str(exc)
+        return _TEMPLATES.TemplateResponse(
+            request,
+            "logs.html",
+            {"config": config, "logs": logs, "type": type, "status": status, "keyword": keyword, "log_error": log_error},
+        )
+
+    @app.get("/api/status")
+    def api_status() -> dict[str, object]:
+        status, _, log_error = _read_log_view(config, limit=0)
+        if log_error:
+            status["log_error"] = log_error
+        return status
+
+    @app.get("/api/logs")
+    def api_logs(
+        type: str = Query("all"),
+        status: str = Query("all"),
+        keyword: str = Query(""),
+        limit: int = Query(200),
+    ) -> dict[str, object]:
+        bounded_limit = min(max(limit, 1), 1000)
+        try:
+            _ensure_web_log_share_access(config)
+            logs = LogStore(config.log.dir).read_recent_logs(
+                log_type=type,
+                status=status,
+                keyword=keyword,
+                limit=bounded_limit,
+            )
+            return {"items": logs, "count": len(logs), "error": ""}
+        except (ConfigError, OSError) as exc:
+            return {"items": [], "count": 0, "error": str(exc)}
+
+    @app.get("/api/logs/latest")
+    def api_latest_logs() -> dict[str, object]:
+        try:
+            _ensure_web_log_share_access(config)
+            logs = LogStore(config.log.dir).read_recent_logs(limit=50)
+            return {"items": logs, "count": len(logs), "error": ""}
+        except (ConfigError, OSError) as exc:
+            return {"items": [], "count": 0, "error": str(exc)}
 
     @app.get("/station-config", response_class=HTMLResponse)
     def station_config_list(
@@ -40,9 +108,9 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
         except Exception as exc:  # pragma: no cover - display branch
             error = str(exc)
         return _TEMPLATES.TemplateResponse(
+            request,
             "station_config_list.html",
             {
-                "request": request,
                 "config": config,
                 "rows": rows,
                 "status": status,
@@ -203,9 +271,9 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
         except Exception:
             rows = []
         return _TEMPLATES.TemplateResponse(
+            request,
             "station_config_list.html",
             {
-                "request": request,
                 "config": config,
                 "rows": rows,
                 "status": "all",
@@ -241,6 +309,57 @@ def _empty_form(config_id: int | None = None) -> dict[str, object]:
         "sort_order": "0",
         "remark": "",
     }
+
+
+def _empty_status_snapshot() -> dict[str, object]:
+    return {
+        "latest_upload": None,
+        "latest_watch": None,
+        "latest_error": None,
+        "today_success": 0,
+        "today_failed": 0,
+        "today_skipped": 0,
+    }
+
+
+def _read_log_view(config: WebConfig, limit: int) -> tuple[dict[str, object], list[dict[str, object]], str]:
+    try:
+        _ensure_web_log_share_access(config)
+        store = LogStore(config.log.dir)
+        recent_logs = store.read_recent_logs(limit=max(limit, 1000))
+        status = store.build_status_snapshot(recent_logs)
+        logs = recent_logs[:limit] if limit > 0 else []
+        return status, logs, ""
+    except (ConfigError, OSError) as exc:
+        return _empty_status_snapshot(), [], str(exc)
+
+
+def _ensure_web_log_share_access(config: WebConfig) -> None:
+    log_share_root = get_share_root(config.log.dir)
+    if log_share_root is None:
+        return
+    if _path_exists(log_share_root):
+        return
+    if not config.share.username or not config.share.password:
+        raise ConfigError(f"日志共享目录不可访问，且 web_config.json 未配置 share.username/share.password: {log_share_root}")
+
+    result = subprocess.run(
+        ["net", "use", log_share_root, f"/user:{config.share.username}", config.share.password],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        output = " ".join(part.strip() for part in [result.stdout, result.stderr] if part and part.strip())
+        suffix = f": {output}" if output else ""
+        raise ConfigError(f"日志共享目录登录失败: {log_share_root}{suffix}")
+
+
+def _path_exists(path: str) -> bool:
+    try:
+        return Path(path).exists()
+    except OSError:
+        return False
 
 
 def _form_from_request(
@@ -289,9 +408,9 @@ def _render_form(
     status_code: int = 200,
 ) -> HTMLResponse:
     return _TEMPLATES.TemplateResponse(
+        request,
         "station_config_form.html",
         {
-            "request": request,
             "config": config,
             "mode": mode,
             "form": form,

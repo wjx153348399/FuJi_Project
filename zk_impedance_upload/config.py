@@ -83,6 +83,9 @@ class WatchConfig:
     notice_mode: str = "log_and_daily_summary"
     poll_interval_seconds: int = 5
     debounce_seconds: int = 5
+    stable_check_seconds: int = 2
+    stable_check_attempts: int = 3
+    queue_max_workers: int = 1
 
 
 @dataclass(frozen=True)
@@ -149,6 +152,9 @@ def parse_config(raw: dict[str, Any]) -> AppConfig:
             notice_mode=_optional_str(watch, "notice_mode", "log_and_daily_summary"),
             poll_interval_seconds=_optional_positive_int(watch, "poll_interval_seconds", 5),
             debounce_seconds=_optional_positive_int(watch, "debounce_seconds", 5),
+            stable_check_seconds=_optional_positive_int(watch, "stable_check_seconds", 2),
+            stable_check_attempts=_optional_positive_int(watch, "stable_check_attempts", 3),
+            queue_max_workers=_optional_positive_int(watch, "queue_max_workers", 1),
         ),
         station_config=_parse_station_config(station_config),
     )

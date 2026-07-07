@@ -215,10 +215,10 @@ class RunnerTest(unittest.TestCase):
             )
 
         joined = "\n".join(messages)
-        self.assertIn("开始上传任务", joined)
-        self.assertIn("正在扫描共享盘文件", joined)
-        self.assertIn("正在上传 1/1", joined)
-        self.assertIn("上传任务汇总", joined)
+        self.assertIn("start upload task", joined)
+        self.assertIn("scanning share files", joined)
+        self.assertIn("uploading 1/1", joined)
+        self.assertIn("upload task summary", joined)
 
     def test_run_upload_task_writes_flow_and_file_path_to_logs_and_history(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -106,6 +106,53 @@ class LogStoreTest(unittest.TestCase):
             with self.assertRaisesRegex(LogError, "日志路径不是目录"):
                 LogStore(file_path).ensure_ready()
 
+    def test_reads_recent_logs_from_upload_and_watch_jsonl(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            store = LogStore(tmp_dir)
+            store.append_upload_log(
+                "2026-06-14",
+                {
+                    "action": "upload_failed",
+                    "filename": "bad.xlsx",
+                    "full_path": "share/bad.xlsx",
+                    "error": "timeout",
+                },
+            )
+            store.append_watch_log(
+                "2026-06-14",
+                {
+                    "event_type": "realtime_upload_success",
+                    "path": "share/ok.xlsx",
+                    "log_time": "2026-06-14 08:00:00",
+                },
+            )
+
+            logs = store.read_recent_logs(limit=10)
+            failed = store.read_recent_logs(status="failed")
+            snapshot = store.build_status_snapshot()
+
+        self.assertEqual(len(logs), 2)
+        self.assertEqual(failed[0]["status"], "failed")
+        self.assertEqual(failed[0]["message"], "timeout")
+        self.assertEqual(snapshot["latest_error"]["filename"], "bad.xlsx")
+
+    def test_reads_recent_logs_from_file_tail_without_loading_all_rows(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            store = LogStore(tmp_dir)
+            for index in range(30):
+                store.append_upload_log(
+                    "2026-06-14",
+                    {
+                        "action": "upload_success",
+                        "filename": f"file-{index}.xlsx",
+                        "full_path": f"share/file-{index}.xlsx",
+                    },
+                )
+
+            logs = store.read_recent_logs(log_type="upload", limit=3)
+
+        self.assertEqual([item["filename"] for item in logs], ["file-29.xlsx", "file-28.xlsx", "file-27.xlsx"])
+
 
 if __name__ == "__main__":
     unittest.main()

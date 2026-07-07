@@ -10,8 +10,14 @@ from typing import Callable
 from zk_impedance_upload.config import AppConfig, ScanConfig
 from zk_impedance_upload.date_window import SHANGHAI_TZ
 from zk_impedance_upload.log_store import LogStore
+from zk_impedance_upload.parser import ParsedFile
+from zk_impedance_upload.realtime_uploader import RealtimeUploadService
 from zk_impedance_upload.share_auth import ensure_share_access
 from zk_impedance_upload.station_config import StationTargetRepository, build_effective_scan_config
+from zk_impedance_upload.uploader import UploadResult
+
+
+UploadFunc = Callable[[ParsedFile], UploadResult]
 
 
 @dataclass(frozen=True)
@@ -200,6 +206,7 @@ def run_watch_service(
     share_access_func: Callable[[AppConfig], None] | None = None,
     progress_func: Callable[[str], None] | None = None,
     station_repository: StationTargetRepository | None = None,
+    upload_func: UploadFunc | None = None,
 ) -> int:
     sleep = sleep_func or time.sleep
     get_now = now_func or _current_time
@@ -220,6 +227,18 @@ def run_watch_service(
     )
     if effective_scan.fallback_reason:
         progress(f"工站目录配置已回退到 JSON: {effective_scan.fallback_reason}")
+
+    if max_iterations is None:
+        return _run_native_watch_service(
+            config=config,
+            scan_config=effective_scan.scan,
+            log_store=log_store,
+            sleep_func=sleep,
+            now_func=get_now,
+            progress_func=progress,
+            upload_func=upload_func,
+        )
+
     progress("正在采集初始监听快照...")
     previous = collect_watch_snapshot(config.share.root, effective_scan.scan)
     progress(
@@ -229,6 +248,15 @@ def run_watch_service(
         f"failed_dir={len(previous.failed_dirs)}"
     )
     debouncer = EventDebouncer(config.watch.debounce_seconds)
+    realtime_service = RealtimeUploadService(
+        config,
+        effective_scan.scan,
+        log_store,
+        upload_func=upload_func,
+        sleep_func=sleep,
+        now_func=get_now,
+        progress_func=progress,
+    )
     iteration = 0
 
     _log_snapshot_state(log_store, previous, get_now())
@@ -254,6 +282,9 @@ def run_watch_service(
                     format_watch_log_entry(event, _format_log_time(current_time)),
                 )
                 progress(f"监听事件: {event.event_type} {event.path}")
+                if not event.is_dir and event.event_type in {"watch_created", "watch_modified", "watch_renamed"}:
+                    result = realtime_service.handle_event(event)
+                    progress(f"实时上传处理: status={result.status} path={result.path}")
             previous = current
         except Exception as exc:  # pragma: no cover - recovery branch
             current_time = get_now()
@@ -276,6 +307,98 @@ def run_watch_service(
 
 def _no_progress(_: str) -> None:
     return None
+
+
+def _run_native_watch_service(
+    *,
+    config: AppConfig,
+    scan_config: ScanConfig,
+    log_store: LogStore,
+    sleep_func: Callable[[float], None],
+    now_func: Callable[[], datetime],
+    progress_func: Callable[[str], None],
+    upload_func: UploadFunc | None,
+) -> int:
+    try:
+        from watchdog.events import FileSystemEvent, FileSystemEventHandler
+        from watchdog.observers import Observer
+    except ImportError as exc:  # pragma: no cover - deployment dependency branch
+        raise RuntimeError("watchdog is required for realtime watch service; run pip install -r requirements.txt") from exc
+
+    root_path = Path(config.share.root)
+    snapshot = collect_watch_snapshot(root_path, scan_config)
+    _log_snapshot_state(log_store, snapshot, now_func())
+    realtime_service = RealtimeUploadService(
+        config,
+        scan_config,
+        log_store,
+        upload_func=upload_func,
+        sleep_func=sleep_func,
+        now_func=now_func,
+        progress_func=progress_func,
+    )
+
+    class _Handler(FileSystemEventHandler):
+        def on_created(self, event: FileSystemEvent) -> None:
+            _handle_native_event("watch_created", event, realtime_service, log_store, now_func, progress_func)
+
+        def on_modified(self, event: FileSystemEvent) -> None:
+            _handle_native_event("watch_modified", event, realtime_service, log_store, now_func, progress_func)
+
+        def on_moved(self, event: FileSystemEvent) -> None:
+            _handle_native_event("watch_renamed", event, realtime_service, log_store, now_func, progress_func)
+
+        def on_deleted(self, event: FileSystemEvent) -> None:
+            _handle_native_event("watch_deleted", event, realtime_service, log_store, now_func, progress_func)
+
+    observer = Observer()
+    targets = [target for target in _iter_watch_targets(root_path, scan_config) if target.exists() and target.is_dir()]
+    for target in targets:
+        observer.schedule(_Handler(), str(target), recursive=scan_config.recursive)
+        progress_func(f"watchdog listening: {target}")
+    if not targets:
+        progress_func("no valid watch target directories")
+        return 2
+
+    observer.start()
+    progress_func("watchdog service started")
+    try:
+        while True:
+            sleep_func(1)
+    except KeyboardInterrupt:  # pragma: no cover - manual stop branch
+        progress_func("watchdog service stopping")
+    finally:
+        observer.stop()
+        observer.join()
+    return 0
+
+
+def _handle_native_event(
+    event_type: str,
+    native_event,
+    realtime_service: RealtimeUploadService,
+    log_store: LogStore,
+    now_func: Callable[[], datetime],
+    progress_func: Callable[[str], None],
+) -> None:
+    path = Path(getattr(native_event, "dest_path", "") or native_event.src_path)
+    previous_path = Path(native_event.src_path) if event_type == "watch_renamed" else None
+    event = WatchEvent(
+        event_type=event_type,
+        path=path,
+        previous_path=previous_path,
+        is_dir=bool(native_event.is_directory),
+        is_excel=_is_excel_path(path),
+    )
+    current_time = now_func()
+    log_store.append_watch_log(
+        current_time.date().isoformat(),
+        format_watch_log_entry(event, _format_log_time(current_time)),
+    )
+    progress_func(f"监听事件: {event.event_type} {event.path}")
+    if not event.is_dir and event.event_type in {"watch_created", "watch_modified", "watch_renamed"}:
+        result = realtime_service.handle_event(event)
+        progress_func(f"实时上传处理: status={result.status} path={result.path}")
 
 
 def _iter_watch_targets(root_path: Path, scan_config: ScanConfig) -> list[Path]:

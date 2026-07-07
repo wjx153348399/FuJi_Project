@@ -26,10 +26,14 @@ class StationConfigWebConfigTest(unittest.TestCase):
                             "password": "secret",
                             "table": "dbo.station_directory_config",
                         },
-                        "share": {"root": r"\\server\share\阻抗"},
+                        "share": {
+                            "root": r"\\server\share\impedance",
+                            "username": "IT",
+                            "password": "FQCIT",
+                        },
+                        "log": {"dir": r"\\server\share\ZK_LOG"},
                         "auth": {"username": "admin", "password": "secret"},
-                    },
-                    ensure_ascii=False,
+                    }
                 ),
                 encoding="utf-8",
             )
@@ -39,7 +43,10 @@ class StationConfigWebConfigTest(unittest.TestCase):
         self.assertEqual(config.server.port, 8090)
         self.assertEqual(config.db.database, "QMS")
         self.assertEqual(config.db.table, "dbo.station_directory_config")
-        self.assertEqual(config.share.root, r"\\server\share\阻抗")
+        self.assertEqual(config.share.root, r"\\server\share\impedance")
+        self.assertEqual(config.share.username, "IT")
+        self.assertEqual(config.share.password, "FQCIT")
+        self.assertEqual(config.log.dir, r"\\server\share\ZK_LOG")
         self.assertEqual(config.auth.username, "admin")
 
     def test_missing_auth_password_raises_clear_error(self):

@@ -55,6 +55,9 @@
     "enabled": true,
     "notice_mode": "log_and_daily_summary",
     "poll_interval_seconds": 5,
-    "debounce_seconds": 5
+    "debounce_seconds": 5,
+    "stable_check_seconds": 2,
+    "stable_check_attempts": 3,
+    "queue_max_workers": 1
   }
 }

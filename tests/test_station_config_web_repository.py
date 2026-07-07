@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-from station_config_web.config import AuthConfig, ServerConfig, ShareConfig, WebConfig, WebDbConfig
+from station_config_web.config import AuthConfig, LogConfig, ServerConfig, ShareConfig, WebConfig, WebDbConfig
 from station_config_web.repository import (
     StationDirectoryInput,
     StationDirectoryRepository,
@@ -269,6 +269,7 @@ def _config(share_root: str = ".") -> WebConfig:
         server=ServerConfig(),
         db=WebDbConfig(host="127.0.0.1", database="QMS", username="sa", password="secret"),
         share=ShareConfig(root=share_root),
+        log=LogConfig(dir=str(Path(share_root) / "ZK_LOG")),
         auth=AuthConfig(username="admin", password="secret"),
     )
 

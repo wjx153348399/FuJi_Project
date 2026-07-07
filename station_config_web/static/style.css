@@ -42,6 +42,12 @@ p {
   gap: 8px;
 }
 
+.nav-links {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
 button,
 input,
 select {
@@ -95,6 +101,34 @@ button {
   color: #4b5563;
   display: flex;
   gap: 24px;
+}
+
+.metric-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 12px;
+}
+
+.metric {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 14px 16px;
+}
+
+.metric span {
+  color: #64748b;
+  display: block;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.metric strong {
+  color: #111827;
+  display: block;
+  font-size: 28px;
+  line-height: 1;
 }
 
 .notice.error {

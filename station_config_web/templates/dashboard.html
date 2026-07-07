@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <title>Upload Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css?v=realtime1">
+  </head>
+  <body>
+    <main class="page">
+      <header class="toolbar">
+        <div>
+          <h1>Upload Dashboard</h1>
+          <p>{{ config.log.dir }}</p>
+        </div>
+        <nav class="nav-links">
+          <a class="button-link" href="/logs">Logs</a>
+          <a class="small-link" href="/station-config">Station Config</a>
+        </nav>
+      </header>
+
+      {% if log_error %}
+        <section class="notice error">
+          Log directory error: {{ log_error }}
+        </section>
+      {% endif %}
+
+      <section class="metric-grid">
+        <div class="metric">
+          <span>Today Success</span>
+          <strong>{{ status.today_success }}</strong>
+        </div>
+        <div class="metric">
+          <span>Today Failed</span>
+          <strong>{{ status.today_failed }}</strong>
+        </div>
+        <div class="metric">
+          <span>Today Skipped</span>
+          <strong>{{ status.today_skipped }}</strong>
+        </div>
+      </section>
+
+      {% if status.latest_error %}
+        <section class="notice error">
+          {{ status.latest_error.action }}: {{ status.latest_error.message or status.latest_error.path }}
+        </section>
+      {% endif %}
+
+      <section class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Status</th>
+              <th>Action</th>
+              <th>File</th>
+              <th>flow</th>
+              <th>Message</th>
+            </tr>
+          </thead>
+          <tbody id="latestLogs">
+            {% for item in logs %}
+              <tr>
+                <td>{{ item.log_type }}</td>
+                <td><span class="badge {{ 'error' if item.status == 'failed' else 'ok' if item.status == 'success' else 'off' }}">{{ item.status }}</span></td>
+                <td>{{ item.action }}</td>
+                <td>
+                  <div class="path-main">{{ item.filename }}</div>
+                  <div class="path-sub">{{ item.path }}</div>
+                </td>
+                <td>{{ item.flow }}</td>
+                <td>{{ item.message }}</td>
+              </tr>
+            {% else %}
+              <tr>
+                <td colspan="6" class="empty">No logs</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    </main>
+  </body>
+</html>

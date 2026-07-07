@@ -19,10 +19,17 @@ Dashboard 是状态首页，主要看三块内容：
 1. 今日上传成功数量
 2. 今日上传失败数量
 3. 最近的监听或上传日志
+4. 服务状态、最后心跳时间、监听自动重启次数
 
 如果自动上传正常，文件变更并上传后，最近日志里会出现上传成功记录。
 
 如果出现红色或失败信息，先进入 Logs 页面查看具体原因。
+
+服务状态说明：
+
+- `running` 表示组合服务正在运行并写入心跳。
+- `Last Heartbeat` 长时间不变化，说明服务可能已经停止。
+- `Watcher Restarts` 变大，说明监听服务曾异常退出并被自动拉起。
 
 ## 3. 进入工站配置页面
 
@@ -282,3 +289,9 @@ python run_watcher.py --config config.json
 ```
 
 Web 页面服务和监听服务日常建议通过 `run_all.py` 一起启动。
+
+如果需要设置服务器登录后自动启动，可由管理员运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\register_run_all_task.ps1
+```

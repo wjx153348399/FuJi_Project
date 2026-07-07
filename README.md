@@ -43,6 +43,8 @@ python run_all.py --config config.example.json --web-config web_config.example.j
 - `run_upload.py` 用于执行每天一次的上传任务。
 - `run_watcher.py` 用于单独启动常驻监听上传任务。
 - `run_all.py` 用于一次启动 Web 页面和常驻监听上传任务。
+- `scripts/start_run_all.bat` 用于在服务器上双击或任务计划启动组合服务。
+- `scripts/register_run_all_task.ps1` 用于注册 Windows 登录后自动启动任务。
 
 推荐日常使用方式：
 
@@ -107,7 +109,9 @@ python run_all.py --config config.json --web-config web_config.json
 
 - 一个命令同时启动 Web 页面和监听上传服务。
 - 原来的 Web 单独启动、监听单独启动方式仍然保留，便于排查问题。
-- 如果监听服务退出，组合进程会退出；如果 Web 端口被占用，会提示 Web 启动失败。
+- 如果 Web 端口被占用，会提示 Web 启动失败。
+- 如果监听服务异常退出，组合进程会按配置自动重启监听服务。
+- 组合服务会在日志目录写入 `service_status.json`，Dashboard 会展示心跳和重启次数。
 
 ## 配置
 
@@ -243,6 +247,7 @@ zk_impedance_upload/
   parser.py        区域识别、文件名标准化、基础 key 生成
   runner.py        串联配置、扫描、解析、去重、上传和日志记录
   scanner.py       目标目录扫描、扩展名过滤、临时文件过滤、日期窗口过滤
+  service_status.py 组合服务状态文件读写
   share_auth.py    Windows 共享盘访问检查和 net use 登录
   station_config.py 工站目录配置来源解析、SQL Server 读取、JSON 回退
   uploader.py      HTTP multipart 上传、超时、重试、结果封装
@@ -339,6 +344,7 @@ tests/
 - 上传模块不依赖监听才能执行。
 - 监听中断不会阻止上传任务运行。
 - 组合启动只减少部署命令数量，不改变上传规则。
+- 组合启动会自动拉起异常退出的监听服务，但不会改变文件筛选、日期窗口或去重规则。
 
 ## 推荐上线方式
 
@@ -363,6 +369,20 @@ python run_upload.py --config D:\PythonProject\ZK\config.json
 
 ```powershell
 python run_all.py --config D:\PythonProject\ZK\config.json --web-config D:\PythonProject\ZK\web_config.json
+```
+
+任务计划注册示例：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\register_run_all_task.ps1 `
+  -ProjectDir D:\PythonProject\ZK `
+  -PythonExe C:\Users\15334\.conda\envs\pycharm_project\python.exe
+```
+
+如果不想注册任务计划，也可以直接运行：
+
+```powershell
+scripts\start_run_all.bat
 ```
 
 ### 3. 单独监听任务
@@ -438,6 +458,13 @@ python run_watcher.py --config D:\PythonProject\ZK\config.json
 - 单独 Web、单独监听入口适合排查端口、数据库、共享盘和上传接口问题。
 - 原入口保留后，出现问题时可以更快定位是哪一部分异常。
 
+### Dashboard 的服务状态是什么意思
+
+- `Service=running` 表示组合服务正在写心跳。
+- `Last Heartbeat` 是最近一次写入 `service_status.json` 的时间。
+- `Watcher Restarts` 是本次组合服务启动后监听服务自动重启次数。
+- 如果状态长时间不更新，优先检查 `run_all.py` 进程是否仍在运行。
+
 ### 为什么监听汇总在上传任务里生成
 
 - 需求本身更接近“每天看一次前一天变化汇总”。
@@ -477,6 +504,7 @@ python run_watcher.py --config D:\PythonProject\ZK\config.json
 - 配置中 `watch.enabled=true`。
 - `python run_all.py --config config.json --web-config web_config.json` 可以正常启动。
 - 必要时 `python run_watcher.py --config config.json` 可以单独启动监听。
+- Dashboard 的服务状态能看到心跳时间和监听重启次数。
 - 新增、修改、删除、重命名文件时会写入 `watch_log`。
 - 明显重复触发的短时间事件会被防抖压缩。
 - 监听目录不存在或访问失败时会写 `watch_notice`。

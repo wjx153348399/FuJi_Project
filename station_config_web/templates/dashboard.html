@@ -39,6 +39,27 @@
         </div>
       </section>
 
+      <section class="status-panel">
+        <div>
+          <span>Service</span>
+          <strong class="{{ 'status-ok' if service_status.state == 'running' else 'status-warn' }}">
+            {{ service_status.state }}
+          </strong>
+        </div>
+        <div>
+          <span>Last Heartbeat</span>
+          <strong>{{ service_status.updated_at or '-' }}</strong>
+        </div>
+        <div>
+          <span>Watcher Restarts</span>
+          <strong>{{ service_status.watcher_restart_count }}</strong>
+        </div>
+        <div>
+          <span>Message</span>
+          <strong>{{ service_status.message or '-' }}</strong>
+        </div>
+      </section>
+
       {% if status.latest_error %}
         <section class="notice error">
           {{ status.latest_error.action }}: {{ status.latest_error.message or status.latest_error.path }}

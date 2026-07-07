@@ -5,7 +5,7 @@ import types
 import unittest
 from types import SimpleNamespace
 
-from zk_impedance_upload.db_log_store import DbLogStore
+from zk_impedance_upload.db_log_store import DbLogStore, build_source_hash
 
 
 class DbLogStoreTest(unittest.TestCase):
@@ -16,6 +16,9 @@ class DbLogStoreTest(unittest.TestCase):
             def execute(self, sql, *params):
                 calls.append((sql, params))
                 return self
+
+            def fetchone(self):
+                return SimpleNamespace(source_hash_length=64)
 
         class FakeConnection:
             def __enter__(self):
@@ -68,11 +71,23 @@ class DbLogStoreTest(unittest.TestCase):
                 sys.modules["pyodbc"] = original_pyodbc
 
         self.assertEqual(result, "db:dbo.zk_upload_runtime_log")
-        sql, params = calls[0]
+        sql, params = calls[1]
         self.assertIn("[dbo].[zk_upload_runtime_log]", sql)
-        self.assertEqual(params[1:8], ("2026-07-06", "upload", "error", "failed", "upload_failed", "ZK-1", "bad.xlsx"))
-        self.assertEqual(params[12], "backend failed")
+        self.assertEqual(params[2:9], ("2026-07-06", "upload", "error", "failed", "upload_failed", "ZK-1", "bad.xlsx"))
+        self.assertEqual(params[13], "backend failed")
         self.assertEqual(calls[-1], ("commit", ()))
+
+    def test_source_hash_is_stable_for_same_log_payload(self):
+        raw_json = '{"action":"upload_success"}'
+
+        self.assertEqual(
+            build_source_hash("upload", "2026-07-06", raw_json),
+            build_source_hash("upload", "2026-07-06", raw_json),
+        )
+        self.assertNotEqual(
+            build_source_hash("upload", "2026-07-06", raw_json),
+            build_source_hash("watch", "2026-07-06", raw_json),
+        )
 
 
 if __name__ == "__main__":

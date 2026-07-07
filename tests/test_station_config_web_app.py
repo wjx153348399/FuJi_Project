@@ -198,6 +198,59 @@ class StationConfigWebAppTest(unittest.TestCase):
         self.assertEqual(response.json()["count"], 1)
         self.assertEqual(response.json()["items"][0]["filename"], "db-log.xlsx")
 
+    def test_status_api_includes_service_status(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir) / "share"
+            log_dir = Path(tmp_dir) / "logs"
+            root.mkdir()
+            log_dir.mkdir()
+            (log_dir / "service_status.json").write_text(
+                json.dumps(
+                    {
+                        "state": "running",
+                        "message": "watcher running",
+                        "updated_at": "2026-07-07 08:00:00",
+                        "watcher_restart_count": 2,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            config_path = Path(tmp_dir) / "web_config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "db": {
+                            "host": "127.0.0.1",
+                            "database": "QMS",
+                            "username": "sa",
+                            "password": "secret",
+                        },
+                        "share": {"root": str(root)},
+                        "log": {"dir": str(log_dir)},
+                        "auth": {"password": "secret"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            fake_store = SimpleNamespace(
+                read_recent_logs=lambda **kwargs: [],
+                build_status_snapshot=lambda recent: {
+                    "latest_upload": None,
+                    "latest_watch": None,
+                    "latest_error": None,
+                    "today_success": 0,
+                    "today_failed": 0,
+                    "today_skipped": 0,
+                },
+            )
+
+            with patch("station_config_web.app._web_db_log_store", return_value=fake_store):
+                client = TestClient(create_app(config_path))
+                response = client.get("/api/status")
+
+        self.assertEqual(response.json()["service"]["state"], "running")
+        self.assertEqual(response.json()["service"]["watcher_restart_count"], 2)
+
     def test_log_api_falls_back_to_file_logs_when_database_fails(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir) / "share"

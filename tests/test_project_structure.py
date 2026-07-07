@@ -1,5 +1,7 @@
 import unittest
 from io import StringIO
+import tempfile
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from run_watcher import main as watch_main
@@ -133,15 +135,18 @@ class ProjectStructureTest(unittest.TestCase):
             return 0
 
         exit_code = run_combined_services(
-            app_config="config",
+            app_config=SimpleNamespace(log=SimpleNamespace(dir=tempfile.mkdtemp())),
             web_runner=fake_web_runner,
             startup_wait_seconds=0.01,
+            heartbeat_seconds=1,
             progress_func=lambda message: None,
             watch_service_func=fake_watch_service,
         )
 
         self.assertEqual(exit_code, 0)
-        self.assertEqual(calls, ["web", ("watch", "config")])
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0], "web")
+        self.assertEqual(calls[1][0], "watch")
 
     def test_run_all_reports_web_start_failure(self):
         def fake_web_runner():
@@ -150,15 +155,58 @@ class ProjectStructureTest(unittest.TestCase):
         messages = []
 
         exit_code = run_combined_services(
-            app_config="config",
+            app_config=SimpleNamespace(log=SimpleNamespace(dir=tempfile.mkdtemp())),
             web_runner=fake_web_runner,
             startup_wait_seconds=0.01,
+            heartbeat_seconds=1,
             progress_func=messages.append,
             watch_service_func=lambda app_config, progress_func: 0,
         )
 
         self.assertEqual(exit_code, 2)
         self.assertIn("Web 服务启动失败", messages[0])
+
+    def test_run_all_restarts_failed_watch_service(self):
+        calls = []
+
+        def fake_watch_service(app_config, progress_func):
+            calls.append("watch")
+            return 1 if len(calls) == 1 else 0
+
+        exit_code = run_combined_services(
+            app_config=SimpleNamespace(log=SimpleNamespace(dir=tempfile.mkdtemp())),
+            web_runner=lambda: None,
+            startup_wait_seconds=0.01,
+            watch_restart_delay_seconds=0,
+            max_watch_restarts=1,
+            heartbeat_seconds=1,
+            progress_func=lambda message: None,
+            watch_service_func=fake_watch_service,
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(calls, ["watch", "watch"])
+
+    def test_run_all_stops_after_max_watch_restarts(self):
+        calls = []
+
+        def fake_watch_service(app_config, progress_func):
+            calls.append("watch")
+            return 1
+
+        exit_code = run_combined_services(
+            app_config=SimpleNamespace(log=SimpleNamespace(dir=tempfile.mkdtemp())),
+            web_runner=lambda: None,
+            startup_wait_seconds=0.01,
+            watch_restart_delay_seconds=0,
+            max_watch_restarts=1,
+            heartbeat_seconds=1,
+            progress_func=lambda message: None,
+            watch_service_func=fake_watch_service,
+        )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(calls, ["watch", "watch"])
 
 
 if __name__ == "__main__":

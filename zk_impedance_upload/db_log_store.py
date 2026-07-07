@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import hashlib
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -40,6 +41,7 @@ class DbLogStore:
         self.db_config = db_config
         self.table = table
         self.driver = driver
+        self._source_hash_supported: bool | None = None
 
     def append_upload_log(self, log_date: str, entry: dict[str, Any]) -> str:
         return self._append_log(log_date, "upload", entry)
@@ -119,37 +121,30 @@ class DbLogStore:
     def _append_log(self, log_date: str, log_type: str, entry: dict[str, Any]) -> str:
         normalized = _normalize_log_entry(entry, log_type, log_date)
         table_name = _validated_table_name(self.table)
-        sql = f"""
-            INSERT INTO {table_name}
-              (
-                log_time, log_date, log_type, level, status, action, run_id,
-                filename, full_path, flow, http_status, retry_count, message, raw_json
-              )
-            VALUES
-              (
-                COALESCE(TRY_CONVERT(datetime2, ?, 120), SYSDATETIME()),
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-              )
-        """
         raw_json = json.dumps(entry, ensure_ascii=False, separators=(",", ":"))
+        source_hash = build_source_hash(log_type, log_date, raw_json)
         with self._connect() as connection:
-            connection.cursor().execute(
-                sql,
-                normalized["time"] or None,
-                log_date,
-                log_type,
-                normalized["level"],
-                normalized["status"],
-                normalized["action"],
-                _clean_text(entry.get("run_id")),
-                normalized["filename"],
-                normalized["path"],
-                normalized["flow"],
-                normalized["http_status"],
-                normalized["retry_count"],
-                normalized["message"],
-                raw_json,
-            )
+            if self._has_source_hash_column(connection):
+                _execute_insert_with_source_hash(
+                    connection,
+                    table_name,
+                    normalized,
+                    log_date,
+                    log_type,
+                    _clean_text(entry.get("run_id")),
+                    raw_json,
+                    source_hash,
+                )
+            else:
+                _execute_insert_without_source_hash(
+                    connection,
+                    table_name,
+                    normalized,
+                    log_date,
+                    log_type,
+                    _clean_text(entry.get("run_id")),
+                    raw_json,
+                )
             connection.commit()
         return f"db:{self.table}"
 
@@ -163,6 +158,14 @@ class DbLogStore:
             _build_connection_string(self.db_config, self.driver),
             timeout=self.db_config.connect_timeout_seconds,
         )
+
+    def _has_source_hash_column(self, connection) -> bool:
+        if self._source_hash_supported is not None:
+            return self._source_hash_supported
+        object_name = _validated_object_name(self.table)
+        row = connection.cursor().execute(f"SELECT COL_LENGTH(N'{object_name}', N'source_hash') AS source_hash_length").fetchone()
+        self._source_hash_supported = bool(getattr(row, "source_hash_length", None))
+        return self._source_hash_supported
 
 
 class RuntimeLogStore:
@@ -249,6 +252,95 @@ def create_runtime_log_store(config, file_store):
     )
 
 
+def build_source_hash(log_type: str, log_date: str, raw_json: str) -> str:
+    payload = f"{log_type}\n{log_date}\n{raw_json}".encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _execute_insert_with_source_hash(
+    connection,
+    table_name: str,
+    normalized: dict[str, Any],
+    log_date: str,
+    log_type: str,
+    run_id: str | None,
+    raw_json: str,
+    source_hash: str,
+) -> None:
+    connection.cursor().execute(
+        f"""
+        IF NOT EXISTS (SELECT 1 FROM {table_name} WHERE source_hash = ?)
+        BEGIN
+            INSERT INTO {table_name}
+              (
+                log_time, log_date, log_type, level, status, action, run_id,
+                filename, full_path, flow, http_status, retry_count, message, raw_json, source_hash
+              )
+            VALUES
+              (
+                COALESCE(TRY_CONVERT(datetime2, ?, 120), SYSDATETIME()),
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+              )
+        END
+        """,
+        source_hash,
+        normalized["time"] or None,
+        log_date,
+        log_type,
+        normalized["level"],
+        normalized["status"],
+        normalized["action"],
+        run_id,
+        normalized["filename"],
+        normalized["path"],
+        normalized["flow"],
+        normalized["http_status"],
+        normalized["retry_count"],
+        normalized["message"],
+        raw_json,
+        source_hash,
+    )
+
+
+def _execute_insert_without_source_hash(
+    connection,
+    table_name: str,
+    normalized: dict[str, Any],
+    log_date: str,
+    log_type: str,
+    run_id: str | None,
+    raw_json: str,
+) -> None:
+    connection.cursor().execute(
+        f"""
+        INSERT INTO {table_name}
+          (
+            log_time, log_date, log_type, level, status, action, run_id,
+            filename, full_path, flow, http_status, retry_count, message, raw_json
+          )
+        VALUES
+          (
+            COALESCE(TRY_CONVERT(datetime2, ?, 120), SYSDATETIME()),
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          )
+        """,
+        normalized["time"] or None,
+        log_date,
+        log_type,
+        normalized["level"],
+        normalized["status"],
+        normalized["action"],
+        run_id,
+        normalized["filename"],
+        normalized["path"],
+        normalized["flow"],
+        normalized["http_status"],
+        normalized["retry_count"],
+        normalized["message"],
+        raw_json,
+    )
+
+
 def _row_to_log_entry(row: object) -> dict[str, Any]:
     raw = _safe_load_raw_json(row.raw_json)
     action = str(row.action or raw.get("action") or raw.get("event_type") or "")
@@ -304,3 +396,10 @@ def _validated_table_name(table_name: str) -> str:
     if not _TABLE_NAME_PATTERN.match(value):
         raise ConfigError("runtime_log.db_table 只能包含字母、数字、下划线，并可使用 schema.table 格式")
     return ".".join(f"[{part}]" for part in value.split("."))
+
+
+def _validated_object_name(table_name: str) -> str:
+    value = table_name.strip()
+    if not _TABLE_NAME_PATTERN.match(value):
+        raise ConfigError("runtime_log.db_table 只能包含字母、数字、下划线，并可使用 schema.table 格式")
+    return value

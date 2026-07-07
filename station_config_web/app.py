@@ -13,6 +13,7 @@ from station_config_web.repository import StationDirectoryInput, StationDirector
 from zk_impedance_upload.db_log_store import DbLogStore
 from zk_impedance_upload.exceptions import ConfigError
 from zk_impedance_upload.log_store import LogStore
+from zk_impedance_upload.service_status import read_service_status
 from zk_impedance_upload.share_auth import get_share_root
 
 
@@ -33,10 +34,17 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
     @app.get("/dashboard", response_class=HTMLResponse)
     def dashboard(request: Request) -> HTMLResponse:
         status, logs, log_error = _read_log_view(config, limit=20)
+        service_status = _read_service_status_view(config)
         return _TEMPLATES.TemplateResponse(
             request,
             "dashboard.html",
-            {"config": config, "status": status, "logs": logs, "log_error": log_error},
+            {
+                "config": config,
+                "status": status,
+                "logs": logs,
+                "log_error": log_error,
+                "service_status": service_status,
+            },
         )
 
     @app.get("/logs", response_class=HTMLResponse)
@@ -67,6 +75,7 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
     @app.get("/api/status")
     def api_status() -> dict[str, object]:
         status, _, log_error = _read_log_view(config, limit=0)
+        status["service"] = _read_service_status_view(config)
         if log_error:
             status["log_error"] = log_error
         return status
@@ -335,6 +344,18 @@ def _read_log_view(config: WebConfig, limit: int) -> tuple[dict[str, object], li
         return status, logs, log_error
     except (ConfigError, OSError, RuntimeError) as exc:
         return _empty_status_snapshot(), [], str(exc)
+
+
+def _read_service_status_view(config: WebConfig) -> dict[str, object]:
+    try:
+        status = read_service_status(config.log.dir)
+    except OSError as exc:
+        status = {"state": "error", "message": str(exc), "updated_at": "", "watcher_restart_count": 0}
+    status.setdefault("state", "unknown")
+    status.setdefault("message", "")
+    status.setdefault("updated_at", "")
+    status.setdefault("watcher_restart_count", 0)
+    return status
 
 
 def _read_recent_logs_with_fallback(

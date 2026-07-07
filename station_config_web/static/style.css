@@ -131,6 +131,40 @@ button {
   line-height: 1;
 }
 
+.status-panel {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr 1.2fr 1fr 2fr;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+}
+
+.status-panel span {
+  color: #64748b;
+  display: block;
+  font-size: 12px;
+  margin-bottom: 5px;
+}
+
+.status-panel strong {
+  color: #111827;
+  display: block;
+  font-size: 14px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.status-ok {
+  color: #166534 !important;
+}
+
+.status-warn {
+  color: #92400e !important;
+}
+
 .notice.error {
   border-color: #fecaca;
   color: #b91c1c;

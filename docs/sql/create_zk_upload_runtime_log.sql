@@ -18,9 +18,33 @@ BEGIN
         retry_count INT NULL,
         message NVARCHAR(MAX) NULL,
         raw_json NVARCHAR(MAX) NULL,
+        source_hash CHAR(64) NULL,
         created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME()
     );
 END;
+
+IF COL_LENGTH(N'dbo.zk_upload_runtime_log', N'source_hash') IS NULL
+BEGIN
+    ALTER TABLE dbo.zk_upload_runtime_log
+    ADD source_hash CHAR(64) NULL;
+END;
+
+EXEC(N'
+UPDATE dbo.zk_upload_runtime_log
+SET source_hash = CONVERT(
+    CHAR(64),
+    HASHBYTES(
+        ''SHA2_256'',
+        CONVERT(
+            NVARCHAR(MAX),
+            CONCAT(log_type, CHAR(10), CONVERT(varchar(10), log_date, 120), CHAR(10), raw_json)
+        )
+    ),
+    2
+)
+WHERE source_hash IS NULL
+  AND raw_json IS NOT NULL;
+');
 
 IF NOT EXISTS (
     SELECT 1
@@ -53,4 +77,18 @@ IF NOT EXISTS (
 BEGIN
     CREATE INDEX IX_zk_upload_runtime_log_date
     ON dbo.zk_upload_runtime_log (log_date, log_type, status);
+END;
+
+IF NOT EXISTS (
+    SELECT 1
+    FROM sys.indexes
+    WHERE name = N'UX_zk_upload_runtime_log_source_hash'
+      AND object_id = OBJECT_ID(N'dbo.zk_upload_runtime_log')
+)
+BEGIN
+    EXEC(N'
+    CREATE UNIQUE INDEX UX_zk_upload_runtime_log_source_hash
+    ON dbo.zk_upload_runtime_log (source_hash)
+    WHERE source_hash IS NOT NULL;
+    ');
 END;

@@ -95,7 +95,7 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
             StationDirectoryRepository(config).create_config(_input_from_form(form))
         except Exception as exc:
             return _render_form(request, config, "new", form, error=str(exc), status_code=400)
-        return RedirectResponse(url="/station-config?notice=created", status_code=303)
+        return RedirectResponse(url=f"/station-config?notice={_save_notice_key(form, 'created')}", status_code=303)
 
     @app.get("/station-config/{config_id}/edit", response_class=HTMLResponse)
     def station_config_edit(request: Request, config_id: int) -> HTMLResponse:
@@ -152,7 +152,7 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
             StationDirectoryRepository(config).update_config(config_id, _input_from_form(form))
         except Exception as exc:
             return _render_form(request, config, "edit", form, error=str(exc), status_code=400)
-        return RedirectResponse(url="/station-config?notice=updated", status_code=303)
+        return RedirectResponse(url=f"/station-config?notice={_save_notice_key(form, 'updated')}", status_code=303)
 
     @app.post("/station-config/{config_id}/enable")
     def station_config_enable(config_id: int) -> RedirectResponse:
@@ -172,16 +172,32 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
         rows = []
         error = ""
         notice = ""
+        checked_directory_path = ""
+        checked_path_exists = False
+        checked_path_is_dir = False
+        dialog_type = ""
+        dialog_message = ""
         try:
-            status_result = StationDirectoryRepository(config).check_directory(directory_path)
+            status_result = StationDirectoryRepository(config).check_and_record_directory(directory_path)
+            checked_directory_path = status_result.directory_path
+            checked_path_exists = status_result.exists
+            checked_path_is_dir = status_result.is_dir
             if status_result.is_dir:
-                notice = f"目录存在: {status_result.full_path}"
+                notice = status_result.message
+                dialog_type = "success"
+                dialog_message = "目录检测成功：目录存在"
             elif status_result.exists:
-                error = f"路径存在但不是目录: {status_result.full_path}"
+                error = status_result.message
+                dialog_type = "warn"
+                dialog_message = "路径检测异常：该路径存在，但不是文件夹"
             else:
-                error = f"目录不存在: {status_result.full_path}"
+                error = status_result.message
+                dialog_type = "error"
+                dialog_message = "目录检测失败：目录不存在，请检查目录路径"
         except Exception as exc:
             error = str(exc)
+            dialog_type = "error"
+            dialog_message = "目录检测失败：无法完成检测，请查看页面错误信息"
         try:
             rows = StationDirectoryRepository(config).list_configs(status="all", keyword=directory_path)
         except Exception:
@@ -196,6 +212,11 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
                 "keyword": directory_path,
                 "error": error,
                 "notice": notice,
+                "checked_directory_path": checked_directory_path,
+                "checked_path_exists": checked_path_exists,
+                "checked_path_is_dir": checked_path_is_dir,
+                "dialog_type": dialog_type,
+                "dialog_message": dialog_message,
             },
         )
 
@@ -285,11 +306,23 @@ def _render_form(
 def _notice_message(notice: str) -> str:
     messages = {
         "created": "新增配置保存成功",
+        "created_blank_flow": "新增配置保存成功；flow 待确认，上传时不会传工站代码",
+        "created_disabled_blank_flow": "新增配置保存成功；flow 待确认，当前停用",
         "updated": "配置修改保存成功",
+        "updated_blank_flow": "配置修改保存成功；flow 待确认，上传时不会传工站代码",
+        "updated_disabled_blank_flow": "配置修改保存成功；flow 待确认，当前停用",
         "enabled": "配置启用成功",
         "disabled": "配置停用成功",
     }
     return messages.get(notice, "")
+
+
+def _save_notice_key(form: dict[str, object], action: str) -> str:
+    if str(form["flow"]).strip():
+        return action
+    if str(form["enabled"]) == "1":
+        return f"{action}_blank_flow"
+    return f"{action}_disabled_blank_flow"
 
 
 def _directory_save_warning(config: WebConfig, form: dict[str, object]) -> str:

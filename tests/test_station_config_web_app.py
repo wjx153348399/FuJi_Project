@@ -4,16 +4,26 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from station_config_web.app import _directory_save_warning, _notice_message
+from station_config_web.app import _directory_save_warning, _notice_message, _save_notice_key
 from station_config_web.config import AuthConfig, ServerConfig, ShareConfig, WebConfig, WebDbConfig
 
 
 class StationConfigWebAppTest(unittest.TestCase):
     def test_notice_message_maps_known_save_results(self):
         self.assertEqual(_notice_message("created"), "新增配置保存成功")
+        self.assertIn("flow 待确认", _notice_message("created_blank_flow"))
         self.assertEqual(_notice_message("updated"), "配置修改保存成功")
+        self.assertIn("当前停用", _notice_message("updated_disabled_blank_flow"))
         self.assertEqual(_notice_message("enabled"), "配置启用成功")
         self.assertEqual(_notice_message("disabled"), "配置停用成功")
+
+    def test_save_notice_key_reports_blank_flow_enabled_state(self):
+        self.assertEqual(_save_notice_key({"flow": "", "enabled": "1"}, "created"), "created_blank_flow")
+        self.assertEqual(
+            _save_notice_key({"flow": "", "enabled": "0"}, "updated"),
+            "updated_disabled_blank_flow",
+        )
+        self.assertEqual(_save_notice_key({"flow": "A557", "enabled": "1"}, "created"), "created")
 
     def test_notice_message_ignores_unknown_values(self):
         self.assertEqual(_notice_message("bad"), "")

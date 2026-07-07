@@ -64,6 +64,23 @@ class Row:
     created_at = "2026-07-01 10:00:00"
     updated_by = "system"
     updated_at = "2026-07-01 10:00:00"
+    path_checked = False
+    path_exists = False
+    path_is_dir = False
+    path_checked_at = None
+    path_check_message = None
+
+
+class BlankFlowRow(Row):
+    flow = " "
+
+
+class ReadyFlowRow(Row):
+    flow = "A557"
+
+
+class SuspectFlowRow(Row):
+    flow = "OUTER"
 
 
 class StationConfigWebRepositoryTest(unittest.TestCase):
@@ -85,12 +102,43 @@ class StationConfigWebRepositoryTest(unittest.TestCase):
         self.assertFalse(rows[0].path_exists)
         self.assertFalse(rows[0].path_is_dir)
         self.assertTrue(rows[0].full_path.endswith("target"))
+        self.assertEqual(rows[0].flow_state, "ready")
+        self.assertEqual(rows[0].upload_field_state, "with_flow")
         self.assertIn("WHERE enabled = 1", connection.cursor_obj.sql)
         self.assertEqual(connection.cursor_obj.params, ["%LXD%", "%LXD%", "%LXD%", "%LXD%"])
+
+    def test_list_configs_marks_blank_flow_as_pending(self):
+        connection = FakeConnection(rows=[BlankFlowRow()])
+
+        with patch("station_config_web.repository._connect", return_value=connection):
+            rows = StationDirectoryRepository(_config()).list_configs()
+
+        self.assertEqual(rows[0].flow_state, "pending")
+        self.assertEqual(rows[0].flow_label, "待确认")
+        self.assertEqual(rows[0].upload_field_state, "without_flow")
+        self.assertEqual(rows[0].upload_field_label, "不传 flow")
+
+    def test_list_configs_marks_display_name_flow_as_suspect(self):
+        connection = FakeConnection(rows=[SuspectFlowRow()])
+
+        with patch("station_config_web.repository._connect", return_value=connection):
+            rows = StationDirectoryRepository(_config()).list_configs()
+
+        self.assertEqual(rows[0].flow_state, "suspect")
+        self.assertIn("疑似显示名", rows[0].flow_label)
 
     def test_list_configs_rejects_invalid_status(self):
         with self.assertRaisesRegex(ConfigError, "status"):
             StationDirectoryRepository(_config()).list_configs(status="bad")
+
+    def test_list_configs_filters_pending_flow(self):
+        connection = FakeConnection(rows=[BlankFlowRow()])
+
+        with patch("station_config_web.repository._connect", return_value=connection):
+            rows = StationDirectoryRepository(_config()).list_configs(status="pending_flow")
+
+        self.assertEqual(rows[0].flow_state, "pending")
+        self.assertIn("LTRIM(RTRIM(flow))", connection.cursor_obj.sql)
 
     def test_create_config_validates_and_writes_clean_values(self):
         unique_connection = FakeConnection(one=None)
@@ -190,6 +238,21 @@ class StationConfigWebRepositoryTest(unittest.TestCase):
 
         self.assertIn("SET enabled", connection.cursor_obj.sql)
         self.assertEqual(connection.cursor_obj.params, [0, "admin", 3])
+        self.assertTrue(connection.committed)
+
+    def test_check_and_record_directory_updates_path_status(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            Path(tmp_dir, "target").mkdir()
+            connection = FakeConnection(rowcount=1)
+
+            with patch("station_config_web.repository._connect", return_value=connection):
+                status = StationDirectoryRepository(_config(tmp_dir)).check_and_record_directory("target")
+
+        self.assertTrue(status.exists)
+        self.assertTrue(status.is_dir)
+        self.assertIn("UPDATE", connection.cursor_obj.sql)
+        self.assertIn("path_checked = 1", connection.cursor_obj.sql)
+        self.assertEqual(connection.cursor_obj.params[-1], "target")
         self.assertTrue(connection.committed)
 
     def test_validate_relative_directory_path_rejects_absolute_paths(self):

@@ -324,6 +324,33 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(upload_entry["flow"], "")
         self.assertEqual(upload_entry["filePath"], str(file_path))
         self.assertIn(str(file_path), upload_entry["fallback_key"])
+        self.assertEqual(upload_entry["flow"], "")
+
+    def test_run_upload_task_counts_blank_flow_in_summary(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir) / "share"
+            log_dir = Path(tmp_dir) / "logs"
+            target_dir = root / "station-a" / "OUTER"
+            target_dir.mkdir(parents=True)
+            file_path = target_dir / "example.xlsx"
+            file_path.write_bytes(b"excel")
+            _set_mtime(file_path, "2026-06-13 10:00:00")
+
+            result = run_upload_task(
+                config=_config(
+                    root,
+                    log_dir,
+                    targets=[ScanTargetConfig(flow="", dir="station-a")],
+                    dry_run=True,
+                ),
+                now=datetime(2026, 6, 14, 8, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+            )
+
+            summary = json.loads(Path(result.summary_path).read_text(encoding="utf-8"))
+
+        self.assertEqual(result.stats["blank_flow_count"], 1)
+        self.assertEqual(result.stats["with_flow_count"], 0)
+        self.assertEqual(summary["stats"]["blank_flow_count"], 1)
 
 
 def _config(

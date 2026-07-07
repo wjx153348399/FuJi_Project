@@ -3,9 +3,30 @@
   <head>
     <meta charset="utf-8">
     <title>工站目录配置</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=dialog2">
   </head>
   <body>
+    {% if dialog_message|default("") %}
+      <div class="secondary-dialog-layer" id="checkPathDialog" role="presentation">
+        <section class="secondary-dialog {{ dialog_type|default('success') }}" role="dialog" aria-modal="true" aria-labelledby="checkPathTitle">
+          <div class="dialog-header">
+            <h2 id="checkPathTitle">目录检测结果</h2>
+          </div>
+          <div class="dialog-body">
+            <p class="dialog-result">{{ dialog_message }}</p>
+            {% if notice %}
+              <p class="dialog-detail">{{ notice }}</p>
+            {% endif %}
+            {% if error %}
+              <p class="dialog-detail">{{ error }}</p>
+            {% endif %}
+          </div>
+          <div class="dialog-actions">
+            <button type="button" onclick="closeCheckPathDialog()">知道了</button>
+          </div>
+        </section>
+      </div>
+    {% endif %}
     <main class="page">
       <header class="toolbar">
         <div>
@@ -18,6 +39,7 @@
             <option value="all" {% if status == "all" %}selected{% endif %}>全部</option>
             <option value="enabled" {% if status == "enabled" %}selected{% endif %}>启用</option>
             <option value="disabled" {% if status == "disabled" %}selected{% endif %}>停用</option>
+            <option value="pending_flow" {% if status == "pending_flow" %}selected{% endif %}>flow 待确认</option>
           </select>
           <input name="keyword" value="{{ keyword }}" placeholder="工站/目录/备注">
           <button type="submit">查询</button>
@@ -43,6 +65,7 @@
               <th>ID</th>
               <th>状态</th>
               <th>flow</th>
+              <th>上传字段状态</th>
               <th>显示名称</th>
               <th>目录路径</th>
               <th>目录检测</th>
@@ -63,15 +86,39 @@
                     <span class="badge off">停用</span>
                   {% endif %}
                 </td>
-                <td>{{ row.flow }}</td>
+                <td>
+                  {% if row.flow_state == "pending" %}
+                    <span class="badge warn">{{ row.flow_label }}</span>
+                  {% elif row.flow_state == "suspect" %}
+                    <span class="badge warn">{{ row.flow_label }}</span>
+                  {% else %}
+                    <span class="badge ok">{{ row.flow_label }}</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if row.upload_field_state == "without_flow" %}
+                    <span class="badge warn">{{ row.upload_field_label }}</span>
+                  {% else %}
+                    <span class="badge ok">{{ row.upload_field_label }}</span>
+                  {% endif %}
+                </td>
                 <td>{{ row.station_name or "" }}</td>
                 <td>
                   <div class="path-main">{{ row.directory_path }}</div>
                   <div class="path-sub">{{ row.full_path }}</div>
                 </td>
                 <td>
-                  {% if not row.path_checked %}
+                  {% if checked_directory_path|default("") == row.directory_path %}
+                    {% if checked_path_is_dir %}
+                      <span class="badge ok">存在</span>
+                    {% elif checked_path_exists %}
+                      <span class="badge warn">不是目录</span>
+                    {% else %}
+                      <span class="badge error">不存在</span>
+                    {% endif %}
+                  {% elif not row.path_checked %}
                     <span class="badge off">未检测</span>
+                    <div class="hint-text">点击“测试目录”确认</div>
                   {% elif row.path_is_dir %}
                     <span class="badge ok">存在</span>
                   {% elif row.path_exists %}
@@ -95,7 +142,7 @@
                         <button class="small-button danger" type="submit">停用</button>
                       </form>
                     {% else %}
-                      <form method="post" action="/station-config/{{ row.id }}/enable" onsubmit="return confirm('确认启用这条配置？启用后自动上传会扫描该目录。');">
+                      <form method="post" action="/station-config/{{ row.id }}/enable" onsubmit="return confirmEnableConfig('{{ row.flow_state }}');">
                         <button class="small-button" type="submit">启用</button>
                       </form>
                     {% endif %}
@@ -104,12 +151,33 @@
               </tr>
             {% else %}
               <tr>
-                <td colspan="10" class="empty">暂无配置</td>
+                <td colspan="11" class="empty">暂无配置</td>
               </tr>
             {% endfor %}
           </tbody>
         </table>
       </section>
     </main>
+    <script>
+      function closeCheckPathDialog() {
+        const dialog = document.getElementById("checkPathDialog");
+        if (dialog) {
+          dialog.remove();
+        }
+        if (window.location.pathname === "/station-config/check-path") {
+          window.location.href = "/station-config";
+        }
+      }
+
+      function confirmEnableConfig(flowState) {
+        if (flowState === "pending") {
+          return confirm("这条配置的 flow 为空，启用后上传时不会传工站代码。确认启用？");
+        }
+        if (flowState === "suspect") {
+          return confirm("这条配置的 flow 看起来像显示名，可能不是确认后的工站代码。确认启用？");
+        }
+        return confirm("确认启用这条配置？启用后自动上传会扫描该目录。");
+      }
+    </script>
   </body>
 </html>

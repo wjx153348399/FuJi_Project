@@ -174,6 +174,8 @@ def run_upload_task(
     stats: dict[str, int | str] = {
         "task_status": "completed",
         "candidate_count": len(scan_result.candidates),
+        "with_flow_count": len([item for item in parsed_files if item.flow.strip()]),
+        "blank_flow_count": len([item for item in parsed_files if not item.flow.strip()]),
         "selected_count": len(batch_result.selected),
         "success_count": success_count,
         "fail_count": fail_count,

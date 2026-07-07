@@ -112,6 +112,89 @@ button {
   color: #166534;
 }
 
+.secondary-dialog-layer {
+  align-items: center;
+  background: rgb(15 23 42 / 42%);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 30;
+}
+
+.secondary-dialog {
+  background: #fff;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  box-shadow: 0 24px 70px rgb(15 23 42 / 28%);
+  max-width: min(560px, 100%);
+  overflow: hidden;
+  width: 100%;
+}
+
+.secondary-dialog.warn {
+  border-color: #fde68a;
+}
+
+.secondary-dialog.error {
+  border-color: #fecaca;
+}
+
+.dialog-header {
+  background: #f8fafc;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 16px 18px;
+}
+
+.dialog-header h2 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.dialog-body {
+  padding: 18px;
+}
+
+.dialog-result {
+  color: #166534;
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 10px;
+}
+
+.secondary-dialog.warn .dialog-result {
+  color: #92400e;
+}
+
+.secondary-dialog.error .dialog-result {
+  color: #b91c1c;
+}
+
+.dialog-detail {
+  color: #475569;
+  line-height: 1.5;
+  margin: 0;
+  word-break: break-all;
+}
+
+.dialog-actions {
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 18px;
+}
+
+.field-help {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.warn-text {
+  color: #92400e;
+}
+
 .table-wrap {
   background: #fff;
   border: 1px solid #e5e7eb;
@@ -185,6 +268,12 @@ th {
   margin-top: 4px;
   max-width: 520px;
   word-break: break-all;
+}
+
+.hint-text {
+  color: #64748b;
+  font-size: 12px;
+  margin-top: 4px;
 }
 
 .empty {

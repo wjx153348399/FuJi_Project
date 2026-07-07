@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <title>{% if mode == "new" %}新增{% else %}编辑{% endif %}工站目录配置</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=dialog2">
   </head>
   <body>
     <main class="page narrow">
@@ -23,13 +23,14 @@
       {% endif %}
 
       <section class="form-panel">
-        <form method="post" action="{% if mode == 'new' %}/station-config/new{% else %}/station-config/{{ form.id }}/edit{% endif %}" onsubmit="return confirm('确认保存这条工站目录配置？保存后会影响自动上传扫描目录。');">
+        <form method="post" action="{% if mode == 'new' %}/station-config/new{% else %}/station-config/{{ form.id }}/edit{% endif %}" onsubmit="return confirmStationSave(this);">
           {% if allow_force_save %}
             <input type="hidden" name="confirm_missing_path" value="1">
           {% endif %}
           <label>
             <span>flow</span>
             <input name="flow" value="{{ form.flow }}" placeholder="可选，确认真实工站代码后填写，例如 A557 / A558">
+            <small class="field-help warn-text">未确认真实工站代码时请留空，不要填写 AFC / OUTER / 文件名中的 AA01。</small>
           </label>
 
           <label>
@@ -69,5 +70,15 @@
         </form>
       </section>
     </main>
+    <script>
+      function confirmStationSave(form) {
+        const flow = form.flow.value.trim();
+        const enabled = form.enabled.value === "1";
+        if (enabled && !flow) {
+          return confirm("这条配置的 flow 为空，启用后上传时不会传工站代码。确认保存并启用？");
+        }
+        return confirm("确认保存这条工站目录配置？保存后会影响自动上传扫描目录。");
+      }
+    </script>
   </body>
 </html>

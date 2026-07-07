@@ -272,7 +272,13 @@ A558
 
 ```powershell
 Ctrl + C
+python run_all.py --config config.json --web-config web_config.json
+```
+
+如果只想单独排查监听服务，也可以使用：
+
+```powershell
 python run_watcher.py --config config.json
 ```
 
-Web 页面服务如果没有改配置文件，一般也不需要重启。
+Web 页面服务和监听服务日常建议通过 `run_all.py` 一起启动。

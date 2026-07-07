@@ -3,6 +3,9 @@ from io import StringIO
 from unittest.mock import patch
 
 from run_watcher import main as watch_main
+from run_all import build_parser as build_all_parser
+from run_all import main as all_main
+from run_all import run_combined_services
 from zk_impedance_upload import __version__
 from zk_impedance_upload.cli import build_parser, main
 
@@ -98,6 +101,64 @@ class ProjectStructureTest(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         cli_main.assert_called_once_with(["--config", "config.example.json", "--watch"])
+
+    def test_run_all_uses_default_config_paths(self):
+        parser = build_all_parser()
+        args = parser.parse_args([])
+
+        self.assertEqual(args.config, "config.json")
+        self.assertEqual(args.web_config, "web_config.json")
+
+    def test_run_all_rejects_disabled_watch_config(self):
+        stderr = StringIO()
+
+        with patch("run_all.load_config") as load_config:
+            with patch("run_all.load_web_config"):
+                load_config.return_value.watch.enabled = False
+
+                with patch("sys.stderr", stderr):
+                    exit_code = all_main(["--config", "config.example.json", "--web-config", "web_config.example.json"])
+
+        self.assertEqual(exit_code, 2)
+        self.assertIn("监听功能未启用", stderr.getvalue())
+
+    def test_run_all_starts_web_then_watch_service(self):
+        calls = []
+
+        def fake_web_runner():
+            calls.append("web")
+
+        def fake_watch_service(app_config, progress_func):
+            calls.append(("watch", app_config))
+            return 0
+
+        exit_code = run_combined_services(
+            app_config="config",
+            web_runner=fake_web_runner,
+            startup_wait_seconds=0.01,
+            progress_func=lambda message: None,
+            watch_service_func=fake_watch_service,
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(calls, ["web", ("watch", "config")])
+
+    def test_run_all_reports_web_start_failure(self):
+        def fake_web_runner():
+            raise RuntimeError("port in use")
+
+        messages = []
+
+        exit_code = run_combined_services(
+            app_config="config",
+            web_runner=fake_web_runner,
+            startup_wait_seconds=0.01,
+            progress_func=messages.append,
+            watch_service_func=lambda app_config, progress_func: 0,
+        )
+
+        self.assertEqual(exit_code, 2)
+        self.assertIn("Web 服务启动失败", messages[0])
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@
 第一阶段代码已完成，当前包含两条独立运行链路：
 
 - 上传链路：每天按目标日期窗口扫描前一天 Excel 文件，执行解析、去重、上传和上传日志记录。
-- 监听链路：常驻监听共享盘目录变化，只记录事件和监听日志，不触发上传。
+- 监听链路：常驻监听共享盘目录变化，符合现有上传规则的 Excel 文件会实时进入上传流程。
 
 当前版本优先保证：
 
@@ -35,12 +35,14 @@ python run_upload.py --help
 python run_upload.py --config config.example.json --check-config
 python run_upload.py --config config.example.json
 python run_watcher.py --config config.example.json
+python run_all.py --config config.example.json --web-config web_config.example.json
 ```
 
 `--check-config` 会检查配置文件格式，并尝试确认日志目录可写。使用真实共享盘路径时，运行账号需要能访问 `\\10.0.8.252\File\ZK_LOG`。
 
 - `run_upload.py` 用于执行每天一次的上传任务。
-- `run_watcher.py` 用于启动常驻监听任务，只记录目录变化，不上传文件。
+- `run_watcher.py` 用于单独启动常驻监听上传任务。
+- `run_all.py` 用于一次启动 Web 页面和常驻监听上传任务。
 
 推荐日常使用方式：
 
@@ -53,6 +55,9 @@ python run_upload.py --config config.json
 
 # 3. 单独启动监听任务
 python run_watcher.py --config config.json
+
+# 4. 一次启动 Web 页面和监听任务
+python run_all.py --config config.json --web-config web_config.json
 ```
 
 ## 运行模式
@@ -87,7 +92,22 @@ python run_watcher.py --config config.json
 - 常驻运行，按轮询间隔扫描目标目录快照。
 - 识别新增、修改、删除、重命名事件。
 - 对短时间重复事件做防抖。
-- 只写监听日志和监听错误信息，不上传文件。
+- 符合现有文件规则和日期窗口的 Excel 文件会实时上传。
+- 监听日志、上传结果和异常会写入文件日志，并在启用时写入数据库运行日志。
+
+### 3. 组合启动模式
+
+入口：
+
+```powershell
+python run_all.py --config config.json --web-config web_config.json
+```
+
+特点：
+
+- 一个命令同时启动 Web 页面和监听上传服务。
+- 原来的 Web 单独启动、监听单独启动方式仍然保留，便于排查问题。
+- 如果监听服务退出，组合进程会退出；如果 Web 端口被占用，会提示 Web 启动失败。
 
 ## 配置
 
@@ -204,7 +224,7 @@ filePath=<文件完整路径，可选，有值才提交>
 
 - 联调阶段把 `upload.dry_run` 设为 `true`。
 - 首次上线前先单独跑一次 `--check-config`。
-- 监听先确认 `watch.enabled=true`，再启动 `run_watcher.py`。
+- 监听先确认 `watch.enabled=true`，日常部署优先启动 `run_all.py`。
 - 如果共享盘事件很多，可以适当把 `poll_interval_seconds` 调大。
 
 ## 当前模块结构
@@ -229,6 +249,7 @@ zk_impedance_upload/
   watcher.py       监听快照采集、事件差异、防抖、监听日志和监听汇总
 run_upload.py      上传任务入口
 run_watcher.py     监听任务入口，固定以 --watch 模式启动
+run_all.py         Web 页面和监听任务组合启动入口
 tests/
   test_config.py             配置模块测试
   test_date_window.py        日期窗口模块测试
@@ -294,32 +315,30 @@ tests/
 
 ## 监听与上传边界
 
-当前代码里，监听模块和上传模块是分开的：
+当前代码里，监听入口和上传处理仍保持模块边界清晰：
 
 - 上传主流程在 `runner.py`，只负责日期窗口、扫描、解析、去重、上传和上传日志。
-- 监听主流程在 `watcher.py`，只负责目录快照、事件识别、防抖、监听日志和监听汇总。
+- 监听主流程在 `watcher.py`，负责目录事件识别、防抖，并把符合规则的文件交给实时上传流程。
 - `run_upload.py` 只进入上传任务。
 - `run_watcher.py` 只进入监听任务。
-- 监听事件不会直接调用上传接口，也不会把事件直接塞进上传队列。
+- `run_all.py` 同时启动 Web 页面和监听任务，但不改变两者内部逻辑。
 - 每日上传任务执行时，如果启用了 `watch.notice_mode=log_and_daily_summary`，会顺带按目标日期生成监听汇总，方便把“前一天监听到的变化”和“当天上传结果”放在同一个时间点查看。
 
 可以把当前结构理解为：
 
-- 监听模块负责“发现变化并记录”
-- 上传模块负责“按 08:00 规则扫描并上传”
+- 监听模块负责“发现变化并触发实时上传”
+- 上传模块负责“按规则解析、去重并调用后端接口”
 
 两者共享的只有：
 
 - 同一份配置
 - 同一个日志目录
-- 上传任务在固定时点读取监听日志并生成监听汇总
 
 更准确地说，当前是“逻辑分离、日志协同”的结构：
 
-- 监听模块不负责上传。
 - 上传模块不依赖监听才能执行。
 - 监听中断不会阻止上传任务运行。
-- 上传任务只是在固定时点读取监听日志做汇总，不消费监听事件本身。
+- 组合启动只减少部署命令数量，不改变上传规则。
 
 ## 推荐上线方式
 
@@ -336,7 +355,17 @@ tests/
 python run_upload.py --config D:\PythonProject\ZK\config.json
 ```
 
-### 2. 监听任务
+### 2. Web + 监听组合任务
+
+- 运行方式：后台常驻进程。
+- 启动方式：开机启动、任务计划或运维托管均可。
+- 作用：提供网页配置入口，并实时监听共享盘变化触发上传。
+
+```powershell
+python run_all.py --config D:\PythonProject\ZK\config.json --web-config D:\PythonProject\ZK\web_config.json
+```
+
+### 3. 单独监听任务
 
 - 运行方式：后台常驻进程。
 - 启动方式：开机启动、任务计划或运维托管均可。
@@ -349,8 +378,8 @@ python run_watcher.py --config D:\PythonProject\ZK\config.json
 推荐上线顺序：
 
 1. 先只上线上传任务，确认扫描、上传、日志都稳定。
-2. 再单独上线监听任务，观察监听日志量和误报情况。
-3. 稳定后再把监听汇总作为日常排查辅助信息使用。
+2. 再上线 `run_all.py`，观察 Web 访问、监听日志量和实时上传结果。
+3. 稳定后再考虑做 Windows 服务化或开机自启动。
 
 ## 典型流程
 
@@ -403,11 +432,11 @@ python run_watcher.py --config D:\PythonProject\ZK\config.json
 
 ## 常见说明
 
-### 为什么监听和上传要分开
+### 为什么还保留单独启动入口
 
-- 监听适合做持续观察。
-- 上传适合做固定时间、固定规则的一次性任务。
-- 分开后更容易排查问题，也能避免监听事件绕过日期窗口。
+- 组合启动适合日常部署。
+- 单独 Web、单独监听入口适合排查端口、数据库、共享盘和上传接口问题。
+- 原入口保留后，出现问题时可以更快定位是哪一部分异常。
 
 ### 为什么监听汇总在上传任务里生成
 
@@ -417,8 +446,8 @@ python run_watcher.py --config D:\PythonProject\ZK\config.json
 
 ### 监听任务停止了会不会影响上传
 
-- 不会直接影响上传。
-- 上传任务仍然会按自己的扫描规则运行。
+- 不会影响 Web 页面已经保存的配置。
+- 手动上传任务仍然可以单独运行。
 - 只是当天可能没有完整的监听日志与监听汇总可供排查。
 
 ## 上线检查清单
@@ -446,7 +475,8 @@ python run_watcher.py --config D:\PythonProject\ZK\config.json
 ### 监听任务
 
 - 配置中 `watch.enabled=true`。
-- `python run_watcher.py --config config.json` 可以正常启动。
+- `python run_all.py --config config.json --web-config web_config.json` 可以正常启动。
+- 必要时 `python run_watcher.py --config config.json` 可以单独启动监听。
 - 新增、修改、删除、重命名文件时会写入 `watch_log`。
 - 明显重复触发的短时间事件会被防抖压缩。
 - 监听目录不存在或访问失败时会写 `watch_notice`。
@@ -463,7 +493,7 @@ python run_watcher.py --config D:\PythonProject\ZK\config.json
 1. 先验证 `--check-config`。
 2. 再执行 dry-run 预演。
 3. 再执行一次真实上传验证。
-4. 最后单独上线监听任务。
+4. 最后上线 `run_all.py` 作为日常常驻服务。
 
 ## 故障排查清单
 
@@ -499,6 +529,12 @@ python run_watcher.py --config config.json
 ```
 
 如果启动后立刻退出，优先查看控制台输出和日志目录。
+
+组合启动排查命令：
+
+```powershell
+python run_all.py --config config.json --web-config web_config.json
+```
 
 ### 3. 扫描不到文件
 
@@ -594,4 +630,4 @@ python run_watcher.py --config config.json
 - 不需要。
 - 上传任务可以单独运行。
 - 监听任务也可以单独运行。
-- 建议最终上线时两者都部署，但仍按独立任务维护。
+- 建议最终上线时使用 `run_all.py` 常驻运行，保留单独入口作为排查手段。

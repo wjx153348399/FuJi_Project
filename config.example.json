@@ -51,11 +51,16 @@
       "query_timeout_seconds": 10
     }
   },
+  "runtime_log": {
+    "db_enabled": true,
+    "db_table": "dbo.zk_upload_runtime_log"
+  },
   "watch": {
     "enabled": true,
     "notice_mode": "log_and_daily_summary",
     "poll_interval_seconds": 5,
     "debounce_seconds": 5,
+    "config_reload_interval_seconds": 5,
     "stable_check_seconds": 2,
     "stable_check_attempts": 3,
     "queue_max_workers": 1

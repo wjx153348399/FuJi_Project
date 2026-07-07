@@ -10,6 +10,7 @@ from fastapi.templating import Jinja2Templates
 
 from station_config_web.config import WebConfig, load_web_config
 from station_config_web.repository import StationDirectoryInput, StationDirectoryRepository
+from zk_impedance_upload.db_log_store import DbLogStore
 from zk_impedance_upload.exceptions import ConfigError
 from zk_impedance_upload.log_store import LogStore
 from zk_impedance_upload.share_auth import get_share_root
@@ -48,9 +49,14 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
         logs = []
         log_error = ""
         try:
-            _ensure_web_log_share_access(config)
-            logs = LogStore(config.log.dir).read_recent_logs(log_type=type, status=status, keyword=keyword, limit=200)
-        except (ConfigError, OSError) as exc:
+            logs, log_error = _read_recent_logs_with_fallback(
+                config,
+                log_type=type,
+                status=status,
+                keyword=keyword,
+                limit=200,
+            )
+        except (ConfigError, OSError, RuntimeError) as exc:
             log_error = str(exc)
         return _TEMPLATES.TemplateResponse(
             request,
@@ -74,24 +80,23 @@ def create_app(config_path: str | Path = "web_config.json") -> FastAPI:
     ) -> dict[str, object]:
         bounded_limit = min(max(limit, 1), 1000)
         try:
-            _ensure_web_log_share_access(config)
-            logs = LogStore(config.log.dir).read_recent_logs(
+            logs, log_error = _read_recent_logs_with_fallback(
+                config,
                 log_type=type,
                 status=status,
                 keyword=keyword,
                 limit=bounded_limit,
             )
-            return {"items": logs, "count": len(logs), "error": ""}
-        except (ConfigError, OSError) as exc:
+            return {"items": logs, "count": len(logs), "error": log_error}
+        except (ConfigError, OSError, RuntimeError) as exc:
             return {"items": [], "count": 0, "error": str(exc)}
 
     @app.get("/api/logs/latest")
     def api_latest_logs() -> dict[str, object]:
         try:
-            _ensure_web_log_share_access(config)
-            logs = LogStore(config.log.dir).read_recent_logs(limit=50)
-            return {"items": logs, "count": len(logs), "error": ""}
-        except (ConfigError, OSError) as exc:
+            logs, log_error = _read_recent_logs_with_fallback(config, limit=50)
+            return {"items": logs, "count": len(logs), "error": log_error}
+        except (ConfigError, OSError, RuntimeError) as exc:
             return {"items": [], "count": 0, "error": str(exc)}
 
     @app.get("/station-config", response_class=HTMLResponse)
@@ -324,14 +329,53 @@ def _empty_status_snapshot() -> dict[str, object]:
 
 def _read_log_view(config: WebConfig, limit: int) -> tuple[dict[str, object], list[dict[str, object]], str]:
     try:
-        _ensure_web_log_share_access(config)
-        store = LogStore(config.log.dir)
-        recent_logs = store.read_recent_logs(limit=max(limit, 1000))
-        status = store.build_status_snapshot(recent_logs)
+        recent_logs, log_error = _read_recent_logs_with_fallback(config, limit=max(limit, 1000))
+        status = _build_log_status_snapshot(config, recent_logs)
         logs = recent_logs[:limit] if limit > 0 else []
-        return status, logs, ""
-    except (ConfigError, OSError) as exc:
+        return status, logs, log_error
+    except (ConfigError, OSError, RuntimeError) as exc:
         return _empty_status_snapshot(), [], str(exc)
+
+
+def _read_recent_logs_with_fallback(
+    config: WebConfig,
+    *,
+    log_type: str = "all",
+    limit: int = 200,
+    keyword: str = "",
+    status: str = "all",
+) -> tuple[list[dict[str, object]], str]:
+    db_error = ""
+    if config.runtime_log.db_enabled:
+        try:
+            logs = _web_db_log_store(config).read_recent_logs(
+                log_type=log_type,
+                limit=limit,
+                keyword=keyword,
+                status=status,
+            )
+            return logs, ""
+        except Exception as exc:
+            db_error = f"数据库日志读取失败，已回退共享盘日志: {exc}"
+
+    _ensure_web_log_share_access(config)
+    logs = LogStore(config.log.dir).read_recent_logs(
+        log_type=log_type,
+        status=status,
+        keyword=keyword,
+        limit=limit,
+    )
+    return logs, db_error
+
+
+def _build_log_status_snapshot(config: WebConfig, recent_logs: list[dict[str, object]]) -> dict[str, object]:
+    if config.runtime_log.db_enabled:
+        return _web_db_log_store(config).build_status_snapshot(recent_logs)
+    return LogStore(config.log.dir).build_status_snapshot(recent_logs)
+
+
+def _web_db_log_store(config: WebConfig) -> DbLogStore:
+    return DbLogStore(config.db, table=config.runtime_log.db_table, driver=config.db.driver)
 
 
 def _ensure_web_log_share_access(config: WebConfig) -> None:
@@ -424,14 +468,14 @@ def _render_form(
 
 def _notice_message(notice: str) -> str:
     messages = {
-        "created": "新增配置保存成功",
-        "created_blank_flow": "新增配置保存成功；flow 待确认，上传时不会传工站代码",
+        "created": "新增配置保存成功；监听服务将自动加载新配置",
+        "created_blank_flow": "新增配置保存成功；flow 待确认，上传时不会传工站代码；监听服务将自动加载新配置",
         "created_disabled_blank_flow": "新增配置保存成功；flow 待确认，当前停用",
-        "updated": "配置修改保存成功",
-        "updated_blank_flow": "配置修改保存成功；flow 待确认，上传时不会传工站代码",
+        "updated": "配置修改保存成功；监听服务将自动加载新配置",
+        "updated_blank_flow": "配置修改保存成功；flow 待确认，上传时不会传工站代码；监听服务将自动加载新配置",
         "updated_disabled_blank_flow": "配置修改保存成功；flow 待确认，当前停用",
-        "enabled": "配置启用成功",
-        "disabled": "配置停用成功",
+        "enabled": "配置启用成功；监听服务将自动加载新配置",
+        "disabled": "配置停用成功；监听服务将自动加载新配置",
     }
     return messages.get(notice, "")
 

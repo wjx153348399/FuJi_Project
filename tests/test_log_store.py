@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from zk_impedance_upload.exceptions import LogError
+from zk_impedance_upload.db_log_store import RuntimeLogStore
 from zk_impedance_upload.log_store import LogStore
 
 
@@ -152,6 +153,39 @@ class LogStoreTest(unittest.TestCase):
             logs = store.read_recent_logs(log_type="upload", limit=3)
 
         self.assertEqual([item["filename"] for item in logs], ["file-29.xlsx", "file-28.xlsx", "file-27.xlsx"])
+
+    def test_runtime_log_store_double_writes_to_database_store(self):
+        class FakeDbStore:
+            def __init__(self):
+                self.uploads = []
+
+            def append_upload_log(self, log_date, entry):
+                self.uploads.append((log_date, entry))
+                return "db"
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_store = FakeDbStore()
+            store = RuntimeLogStore(LogStore(tmp_dir), db_store)
+            entry = {"action": "upload_success", "filename": "ok.xlsx"}
+
+            path = store.append_upload_log("2026-06-14", entry)
+
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), entry)
+            self.assertEqual(db_store.uploads, [("2026-06-14", entry)])
+
+    def test_runtime_log_store_keeps_upload_when_database_write_fails(self):
+        class FailingDbStore:
+            def append_upload_log(self, log_date, entry):
+                raise RuntimeError("database down")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            store = RuntimeLogStore(LogStore(tmp_dir), FailingDbStore())
+
+            path = store.append_upload_log("2026-06-14", {"action": "upload_success", "filename": "ok.xlsx"})
+
+            self.assertTrue(path.exists())
+            watch_log = Path(tmp_dir) / "watch_log_2026-06-14.jsonl"
+            self.assertIn("runtime_log_db_write_failed", watch_log.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

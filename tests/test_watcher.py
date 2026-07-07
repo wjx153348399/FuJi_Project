@@ -4,7 +4,17 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from zk_impedance_upload.config import AppConfig, LogConfig, ScanConfig, ShareConfig, UploadConfig, WatchConfig
+from zk_impedance_upload.config import (
+    AppConfig,
+    LogConfig,
+    ScanConfig,
+    ScanTargetConfig,
+    ShareConfig,
+    StationConfig,
+    StationDbConfig,
+    UploadConfig,
+    WatchConfig,
+)
 from zk_impedance_upload.log_store import LogStore
 from zk_impedance_upload.uploader import UploadResult
 from zk_impedance_upload.watcher import (
@@ -161,6 +171,77 @@ class WatcherTest(unittest.TestCase):
         self.assertEqual(uploaded, [])
         self.assertFalse((log_dir / "upload_log_2026-06-14.jsonl").exists())
 
+    def test_run_watch_service_hot_reloads_flow_without_restart(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir) / "share"
+            target_dir = root / "target"
+            target_dir.mkdir(parents=True)
+            watched_file = target_dir / "report.xlsx"
+            watched_file.write_text("before", encoding="utf-8")
+            log_dir = Path(tmp_dir) / "logs"
+            config = _build_app_config(root, log_dir, source="db")
+            repository = SequencedRepository(
+                [
+                    [ScanTargetConfig(flow="A10", dir="target")],
+                    [ScanTargetConfig(flow="A20", dir="target")],
+                ]
+            )
+            uploaded_flows = []
+            sleep_calls = 0
+
+            def fake_sleep(_: float) -> None:
+                nonlocal sleep_calls
+                sleep_calls += 1
+                if sleep_calls == 1:
+                    watched_file.write_text("after-change", encoding="utf-8")
+
+            run_watch_service(
+                config,
+                max_iterations=1,
+                sleep_func=fake_sleep,
+                now_func=lambda: datetime(2026, 6, 14, 8, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+                station_repository=repository,
+                upload_func=lambda parsed_file: _record_upload_flow(parsed_file, uploaded_flows),
+            )
+
+            watch_log = (log_dir / "watch_log_2026-06-14.jsonl").read_text(encoding="utf-8")
+
+        self.assertEqual(uploaded_flows, ["A20"])
+        self.assertIn("watch_config_reloaded", watch_log)
+
+    def test_run_watch_service_hot_reload_new_directory_does_not_upload_existing_files(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir) / "share"
+            old_dir = root / "old"
+            new_dir = root / "new"
+            old_dir.mkdir(parents=True)
+            new_dir.mkdir(parents=True)
+            existing_new_file = new_dir / "existing.xlsx"
+            existing_new_file.write_text("excel", encoding="utf-8")
+            log_dir = Path(tmp_dir) / "logs"
+            config = _build_app_config(root, log_dir, source="db")
+            repository = SequencedRepository(
+                [
+                    [ScanTargetConfig(flow="A10", dir="old")],
+                    [ScanTargetConfig(flow="A10", dir="new")],
+                ]
+            )
+            uploaded = []
+
+            run_watch_service(
+                config,
+                max_iterations=1,
+                sleep_func=lambda seconds: None,
+                now_func=lambda: datetime(2026, 6, 14, 8, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+                station_repository=repository,
+                upload_func=lambda parsed_file: _record_upload(parsed_file, uploaded),
+            )
+
+            watch_log = (log_dir / "watch_log_2026-06-14.jsonl").read_text(encoding="utf-8")
+
+        self.assertEqual(uploaded, [])
+        self.assertIn("watch_config_reloaded", watch_log)
+
     def test_run_watch_service_ensures_share_access_before_snapshot(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir) / "share"
@@ -243,13 +324,42 @@ class WatcherTest(unittest.TestCase):
         self.assertEqual(summary["stats"]["excel_event_count"], 1)
 
 
-def _build_app_config(root: Path, log_dir: Path) -> AppConfig:
+class SequencedRepository:
+    def __init__(self, target_batches):
+        self.target_batches = list(target_batches)
+        self.calls = 0
+
+    def load_targets(self, db_config):
+        index = min(self.calls, len(self.target_batches) - 1)
+        self.calls += 1
+        return self.target_batches[index]
+
+
+def _build_app_config(root: Path, log_dir: Path, source: str = "json") -> AppConfig:
     return AppConfig(
         share=ShareConfig(root=str(root), username="IT", password="FQCIT"),
         log=LogConfig(dir=str(log_dir)),
         upload=UploadConfig(url="http://example.test/upload"),
         scan=ScanConfig(target_dirs=["target"], recursive=True),
-        watch=WatchConfig(enabled=True, poll_interval_seconds=1, debounce_seconds=1),
+        watch=WatchConfig(
+            enabled=True,
+            poll_interval_seconds=1,
+            debounce_seconds=1,
+            config_reload_interval_seconds=1,
+            stable_check_seconds=1,
+            stable_check_attempts=2,
+        ),
+        station_config=StationConfig(
+            source=source,
+            on_db_error="fallback_to_json",
+            db=StationDbConfig(
+                enabled=source != "json",
+                host="127.0.0.1",
+                database="QMS",
+                username="sa",
+                password="secret",
+            ),
+        ),
     )
 
 
@@ -261,6 +371,18 @@ def _loads_json_line(content: str) -> dict:
 
 def _record_upload(parsed_file, uploaded):
     uploaded.append(parsed_file.filename)
+    return UploadResult(
+        success=True,
+        status_code=200,
+        response={"ok": True},
+        response_text='{"ok":true}',
+        error="",
+        retry_count=0,
+    )
+
+
+def _record_upload_flow(parsed_file, uploaded_flows):
+    uploaded_flows.append(parsed_file.flow)
     return UploadResult(
         success=True,
         status_code=200,

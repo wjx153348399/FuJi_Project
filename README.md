@@ -102,6 +102,7 @@ python run_watcher.py --config config.json
 - `upload`：上传地址、目标日期偏移、超时、重试、dry-run。
 - `scan`：扫描目标目录、扩展名、排除目录、临时文件前缀。
 - `station_config`：工站目录绑定配置来源，可使用 JSON 或 SQL Server。
+- `runtime_log`：运行日志数据库写入配置，默认写入 `dbo.zk_upload_runtime_log`，同时保留共享盘日志文件。
 - `watch`：监听功能开关、监听模式、轮询间隔、防抖窗口。
 
 ### 工站目录绑定
@@ -218,6 +219,7 @@ zk_impedance_upload/
   exceptions.py    项目自定义异常
   fingerprint.py   文件 SHA256、上传成功记录、历史上传跳过判断
   log_store.py     JSON / JSONL 日志、汇总、历史记录读写
+  db_log_store.py  运行日志数据库写入、读取和文件日志双写包装
   parser.py        区域识别、文件名标准化、基础 key 生成
   runner.py        串联配置、扫描、解析、去重、上传和日志记录
   scanner.py       目标目录扫描、扩展名过滤、临时文件过滤、日期窗口过滤

@@ -78,11 +78,18 @@ class StationConfig:
 
 
 @dataclass(frozen=True)
+class RuntimeLogConfig:
+    db_enabled: bool = True
+    db_table: str = "dbo.zk_upload_runtime_log"
+
+
+@dataclass(frozen=True)
 class WatchConfig:
     enabled: bool = False
     notice_mode: str = "log_and_daily_summary"
     poll_interval_seconds: int = 5
     debounce_seconds: int = 5
+    config_reload_interval_seconds: int = 5
     stable_check_seconds: int = 2
     stable_check_attempts: int = 3
     queue_max_workers: int = 1
@@ -95,6 +102,7 @@ class AppConfig:
     upload: UploadConfig
     scan: ScanConfig
     watch: WatchConfig
+    runtime_log: RuntimeLogConfig = field(default_factory=RuntimeLogConfig)
     station_config: StationConfig = field(default_factory=StationConfig)
 
 
@@ -122,6 +130,9 @@ def parse_config(raw: dict[str, Any]) -> AppConfig:
     station_config = raw.get("station_config", {})
     if not isinstance(station_config, dict):
         raise ConfigError("配置项 station_config 必须是对象")
+    runtime_log = raw.get("runtime_log", {})
+    if not isinstance(runtime_log, dict):
+        raise ConfigError("配置项 runtime_log 必须是对象")
 
     return AppConfig(
         share=ShareConfig(
@@ -152,9 +163,14 @@ def parse_config(raw: dict[str, Any]) -> AppConfig:
             notice_mode=_optional_str(watch, "notice_mode", "log_and_daily_summary"),
             poll_interval_seconds=_optional_positive_int(watch, "poll_interval_seconds", 5),
             debounce_seconds=_optional_positive_int(watch, "debounce_seconds", 5),
+            config_reload_interval_seconds=_optional_positive_int(watch, "config_reload_interval_seconds", 5),
             stable_check_seconds=_optional_positive_int(watch, "stable_check_seconds", 2),
             stable_check_attempts=_optional_positive_int(watch, "stable_check_attempts", 3),
             queue_max_workers=_optional_positive_int(watch, "queue_max_workers", 1),
+        ),
+        runtime_log=RuntimeLogConfig(
+            db_enabled=_optional_bool(runtime_log, "db_enabled", True),
+            db_table=_optional_str(runtime_log, "db_table", "dbo.zk_upload_runtime_log"),
         ),
         station_config=_parse_station_config(station_config),
     )

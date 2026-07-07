@@ -6,6 +6,7 @@ from typing import Callable
 
 from zk_impedance_upload.config import AppConfig
 from zk_impedance_upload.date_window import SHANGHAI_TZ, build_date_window
+from zk_impedance_upload.db_log_store import create_runtime_log_store
 from zk_impedance_upload.log_store import LogStore
 from zk_impedance_upload.parser import ParsedFile
 from zk_impedance_upload.scanner import scan_files
@@ -48,7 +49,7 @@ def run_upload_task(
     (share_access_func or ensure_share_access)(config)
     progress("share access check completed")
 
-    log_store = LogStore(config.log.dir)
+    log_store = create_runtime_log_store(config, LogStore(config.log.dir))
     progress("checking log directory...")
     log_store.ensure_ready()
     progress("log directory check completed")

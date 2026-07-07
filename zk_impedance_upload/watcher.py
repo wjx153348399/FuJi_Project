@@ -9,11 +9,12 @@ from typing import Callable
 
 from zk_impedance_upload.config import AppConfig, ScanConfig
 from zk_impedance_upload.date_window import SHANGHAI_TZ
+from zk_impedance_upload.db_log_store import create_runtime_log_store
 from zk_impedance_upload.log_store import LogStore
 from zk_impedance_upload.parser import ParsedFile
 from zk_impedance_upload.realtime_uploader import RealtimeUploadService
 from zk_impedance_upload.share_auth import ensure_share_access
-from zk_impedance_upload.station_config import StationTargetRepository, build_effective_scan_config
+from zk_impedance_upload.station_config import EffectiveScanConfig, StationTargetRepository, build_effective_scan_config
 from zk_impedance_upload.uploader import UploadResult
 
 
@@ -215,7 +216,7 @@ def run_watch_service(
     progress("正在检查共享盘访问...")
     (share_access_func or ensure_share_access)(config)
     progress("共享盘访问检查完成")
-    log_store = LogStore(config.log.dir)
+    log_store = create_runtime_log_store(config, LogStore(config.log.dir))
     progress("正在检查日志目录...")
     log_store.ensure_ready()
     progress("日志目录检查完成")
@@ -232,10 +233,12 @@ def run_watch_service(
         return _run_native_watch_service(
             config=config,
             scan_config=effective_scan.scan,
+            scan_signature=_scan_config_signature(effective_scan.scan),
             log_store=log_store,
             sleep_func=sleep,
             now_func=get_now,
             progress_func=progress,
+            station_repository=station_repository,
             upload_func=upload_func,
         )
 
@@ -248,6 +251,8 @@ def run_watch_service(
         f"failed_dir={len(previous.failed_dirs)}"
     )
     debouncer = EventDebouncer(config.watch.debounce_seconds)
+    scan_signature = _scan_config_signature(effective_scan.scan)
+    target_signature = _watch_targets_signature(config.share.root, effective_scan.scan)
     realtime_service = RealtimeUploadService(
         config,
         effective_scan.scan,
@@ -264,6 +269,30 @@ def run_watch_service(
     while max_iterations is None or iteration < max_iterations:
         sleep(config.watch.poll_interval_seconds)
         try:
+            reload_result = _reload_effective_scan_if_changed(
+                config=config,
+                current_signature=scan_signature,
+                current_target_signature=target_signature,
+                station_repository=station_repository,
+                log_store=log_store,
+                now_func=get_now,
+                progress_func=progress,
+            )
+            if reload_result is not None:
+                effective_scan, scan_signature, new_target_signature = reload_result
+                realtime_service = RealtimeUploadService(
+                    config,
+                    effective_scan.scan,
+                    log_store,
+                    upload_func=upload_func,
+                    sleep_func=sleep,
+                    now_func=get_now,
+                    progress_func=progress,
+                )
+                if new_target_signature != target_signature:
+                    previous = collect_watch_snapshot(config.share.root, effective_scan.scan)
+                    _log_snapshot_state(log_store, previous, get_now())
+                target_signature = new_target_signature
             current = collect_watch_snapshot(config.share.root, effective_scan.scan)
             current_time = get_now()
             _log_snapshot_state(log_store, current, current_time)
@@ -313,10 +342,12 @@ def _run_native_watch_service(
     *,
     config: AppConfig,
     scan_config: ScanConfig,
+    scan_signature: tuple[object, ...],
     log_store: LogStore,
     sleep_func: Callable[[float], None],
     now_func: Callable[[], datetime],
     progress_func: Callable[[str], None],
+    station_repository: StationTargetRepository | None,
     upload_func: UploadFunc | None,
 ) -> int:
     try:
@@ -325,6 +356,80 @@ def _run_native_watch_service(
     except ImportError as exc:  # pragma: no cover - deployment dependency branch
         raise RuntimeError("watchdog is required for realtime watch service; run pip install -r requirements.txt") from exc
 
+    root_path = Path(config.share.root)
+    observer, realtime_service, has_targets = _start_native_observer(
+        observer_class=Observer,
+        handler_class=FileSystemEventHandler,
+        config=config,
+        scan_config=scan_config,
+        log_store=log_store,
+        sleep_func=sleep_func,
+        now_func=now_func,
+        progress_func=progress_func,
+        upload_func=upload_func,
+    )
+    if not has_targets:
+        return 2
+    progress_func("watchdog service started")
+    last_reload_check = time.monotonic()
+    try:
+        while True:
+            sleep_func(1)
+            current_monotonic = time.monotonic()
+            if current_monotonic - last_reload_check < config.watch.config_reload_interval_seconds:
+                continue
+            last_reload_check = current_monotonic
+            reload_result = _reload_effective_scan_if_changed(
+                config=config,
+                current_signature=scan_signature,
+                current_target_signature=_watch_targets_signature(config.share.root, scan_config),
+                station_repository=station_repository,
+                log_store=log_store,
+                now_func=now_func,
+                progress_func=progress_func,
+            )
+            if reload_result is None:
+                continue
+            effective_scan, scan_signature, _ = reload_result
+            if not _valid_watch_targets(root_path, effective_scan.scan):
+                progress_func("工站目录配置热重载跳过: no valid watch target directories")
+                continue
+            observer.stop()
+            observer.join()
+            scan_config = effective_scan.scan
+            observer, realtime_service, has_targets = _start_native_observer(
+                observer_class=Observer,
+                handler_class=FileSystemEventHandler,
+                config=config,
+                scan_config=scan_config,
+                log_store=log_store,
+                sleep_func=sleep_func,
+                now_func=now_func,
+                progress_func=progress_func,
+                upload_func=upload_func,
+            )
+            if not has_targets:
+                return 2
+    except KeyboardInterrupt:  # pragma: no cover - manual stop branch
+        progress_func("watchdog service stopping")
+    finally:
+        observer.stop()
+        observer.join()
+    return 0
+
+
+def _start_native_observer(
+    *,
+    observer_class,
+    handler_class,
+    config: AppConfig,
+    scan_config: ScanConfig,
+    log_store: LogStore,
+    sleep_func: Callable[[float], None],
+    now_func: Callable[[], datetime],
+    progress_func: Callable[[str], None],
+    upload_func: UploadFunc | None,
+):
     root_path = Path(config.share.root)
     snapshot = collect_watch_snapshot(root_path, scan_config)
     _log_snapshot_state(log_store, snapshot, now_func())
@@ -338,39 +443,30 @@ def _run_native_watch_service(
         progress_func=progress_func,
     )
 
-    class _Handler(FileSystemEventHandler):
-        def on_created(self, event: FileSystemEvent) -> None:
+    class _Handler(handler_class):
+        def on_created(self, event) -> None:
             _handle_native_event("watch_created", event, realtime_service, log_store, now_func, progress_func)
 
-        def on_modified(self, event: FileSystemEvent) -> None:
+        def on_modified(self, event) -> None:
             _handle_native_event("watch_modified", event, realtime_service, log_store, now_func, progress_func)
 
-        def on_moved(self, event: FileSystemEvent) -> None:
+        def on_moved(self, event) -> None:
             _handle_native_event("watch_renamed", event, realtime_service, log_store, now_func, progress_func)
 
-        def on_deleted(self, event: FileSystemEvent) -> None:
+        def on_deleted(self, event) -> None:
             _handle_native_event("watch_deleted", event, realtime_service, log_store, now_func, progress_func)
 
-    observer = Observer()
-    targets = [target for target in _iter_watch_targets(root_path, scan_config) if target.exists() and target.is_dir()]
+    observer = observer_class()
+    targets = _valid_watch_targets(root_path, scan_config)
     for target in targets:
         observer.schedule(_Handler(), str(target), recursive=scan_config.recursive)
         progress_func(f"watchdog listening: {target}")
     if not targets:
         progress_func("no valid watch target directories")
-        return 2
+        return observer, realtime_service, False
 
     observer.start()
-    progress_func("watchdog service started")
-    try:
-        while True:
-            sleep_func(1)
-    except KeyboardInterrupt:  # pragma: no cover - manual stop branch
-        progress_func("watchdog service stopping")
-    finally:
-        observer.stop()
-        observer.join()
-    return 0
+    return observer, realtime_service, True
 
 
 def _handle_native_event(
@@ -399,6 +495,100 @@ def _handle_native_event(
     if not event.is_dir and event.event_type in {"watch_created", "watch_modified", "watch_renamed"}:
         result = realtime_service.handle_event(event)
         progress_func(f"实时上传处理: status={result.status} path={result.path}")
+
+
+def _reload_effective_scan_if_changed(
+    *,
+    config: AppConfig,
+    current_signature: tuple[object, ...],
+    current_target_signature: tuple[str, ...],
+    station_repository: StationTargetRepository | None,
+    log_store: LogStore,
+    now_func: Callable[[], datetime],
+    progress_func: Callable[[str], None],
+) -> tuple[EffectiveScanConfig, tuple[object, ...], tuple[str, ...]] | None:
+    try:
+        effective_scan = build_effective_scan_config(config, station_repository)
+    except Exception as exc:  # pragma: no cover - defensive runtime branch
+        current_time = now_func()
+        progress_func(f"工站目录配置热重载失败: {exc}")
+        log_store.append_watch_log(
+            current_time.date().isoformat(),
+            {
+                "event_type": "watch_config_reload_failed",
+                "path": str(Path(config.share.root)),
+                "previous_path": None,
+                "is_dir": True,
+                "is_excel": False,
+                "log_time": _format_log_time(current_time),
+                "message": str(exc),
+            },
+        )
+        return None
+
+    new_signature = _scan_config_signature(effective_scan.scan)
+    if new_signature == current_signature:
+        return None
+
+    new_target_signature = _watch_targets_signature(config.share.root, effective_scan.scan)
+    current_time = now_func()
+    target_changed = new_target_signature != current_target_signature
+    message = (
+        "工站目录配置已热重载: "
+        f"source={effective_scan.effective_source}, "
+        f"targets={effective_scan.target_count}, "
+        f"target_changed={target_changed}"
+    )
+    progress_func(message)
+    log_store.append_watch_log(
+        current_time.date().isoformat(),
+        {
+            "event_type": "watch_config_reloaded",
+            "path": str(Path(config.share.root)),
+            "previous_path": None,
+            "is_dir": True,
+            "is_excel": False,
+            "log_time": _format_log_time(current_time),
+            "message": message,
+            "target_count": effective_scan.target_count,
+            "effective_source": effective_scan.effective_source,
+            "target_changed": target_changed,
+        },
+    )
+    if effective_scan.fallback_reason:
+        progress_func(f"工站目录配置已回退到 JSON: {effective_scan.fallback_reason}")
+    return effective_scan, new_signature, new_target_signature
+
+
+def _scan_config_signature(scan_config: ScanConfig) -> tuple[object, ...]:
+    targets = tuple(
+        sorted(
+            (
+                target.flow.strip(),
+                target.dir.strip().replace("/", "\\").rstrip("\\").lower(),
+                bool(target.enabled),
+            )
+            for target in scan_config.targets or []
+        )
+    )
+    target_dirs = tuple(sorted(item.strip().replace("/", "\\").rstrip("\\").lower() for item in scan_config.target_dirs or []))
+    return (
+        bool(scan_config.recursive),
+        tuple(sorted(ext.lower() for ext in scan_config.extensions or [])),
+        tuple(sorted(scan_config.exclude_prefixes or [])),
+        tuple(sorted((scan_config.exclude_dirs or []))),
+        target_dirs,
+        targets,
+    )
+
+
+def _watch_targets_signature(root: str | Path, scan_config: ScanConfig) -> tuple[str, ...]:
+    root_path = Path(root)
+    return tuple(sorted(_normalize_key(path) for path in _iter_watch_targets(root_path, scan_config)))
+
+
+def _valid_watch_targets(root_path: Path, scan_config: ScanConfig) -> list[Path]:
+    return [target for target in _iter_watch_targets(root_path, scan_config) if target.exists() and target.is_dir()]
 
 
 def _iter_watch_targets(root_path: Path, scan_config: ScanConfig) -> list[Path]:

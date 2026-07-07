@@ -18,12 +18,14 @@ from zk_impedance_upload.exceptions import ConfigError
 
 class StationConfigWebAppTest(unittest.TestCase):
     def test_notice_message_maps_known_save_results(self):
-        self.assertEqual(_notice_message("created"), "新增配置保存成功")
+        self.assertIn("新增配置保存成功", _notice_message("created"))
+        self.assertIn("自动加载新配置", _notice_message("created"))
         self.assertIn("flow 待确认", _notice_message("created_blank_flow"))
-        self.assertEqual(_notice_message("updated"), "配置修改保存成功")
+        self.assertIn("配置修改保存成功", _notice_message("updated"))
+        self.assertIn("自动加载新配置", _notice_message("updated"))
         self.assertIn("当前停用", _notice_message("updated_disabled_blank_flow"))
-        self.assertEqual(_notice_message("enabled"), "配置启用成功")
-        self.assertEqual(_notice_message("disabled"), "配置停用成功")
+        self.assertIn("配置启用成功", _notice_message("enabled"))
+        self.assertIn("配置停用成功", _notice_message("disabled"))
 
     def test_save_notice_key_reports_blank_flow_enabled_state(self):
         self.assertEqual(_save_notice_key({"flow": "", "enabled": "1"}, "created"), "created_blank_flow")
@@ -133,6 +135,105 @@ class StationConfigWebAppTest(unittest.TestCase):
         self.assertIn("bad credentials", dashboard_response.text)
         self.assertEqual(api_response.status_code, 200)
         self.assertEqual(api_response.json()["error"], "bad credentials")
+
+    def test_log_api_prefers_database_logs(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir) / "share"
+            log_dir = Path(tmp_dir) / "logs"
+            root.mkdir()
+            log_dir.mkdir()
+            (log_dir / "upload_log_2026-06-14.jsonl").write_text(
+                json.dumps({"action": "upload_success", "filename": "file-log.xlsx"}, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            config_path = Path(tmp_dir) / "web_config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "db": {
+                            "host": "127.0.0.1",
+                            "database": "QMS",
+                            "username": "sa",
+                            "password": "secret",
+                        },
+                        "share": {"root": str(root)},
+                        "log": {"dir": str(log_dir)},
+                        "auth": {"password": "secret"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            fake_store = SimpleNamespace(
+                read_recent_logs=lambda **kwargs: [
+                    {
+                        "log_type": "upload",
+                        "log_date": "2026-06-14",
+                        "level": "info",
+                        "status": "success",
+                        "time": "2026-06-14 08:00:00",
+                        "action": "upload_success",
+                        "filename": "db-log.xlsx",
+                        "path": "share/db-log.xlsx",
+                        "flow": "",
+                        "http_status": 200,
+                        "retry_count": 0,
+                        "message": "",
+                        "raw": {},
+                    }
+                ],
+                build_status_snapshot=lambda recent: {
+                    "latest_upload": recent[0],
+                    "latest_watch": None,
+                    "latest_error": None,
+                    "today_success": 0,
+                    "today_failed": 0,
+                    "today_skipped": 0,
+                },
+            )
+
+            with patch("station_config_web.app._web_db_log_store", return_value=fake_store):
+                client = TestClient(create_app(config_path))
+                response = client.get("/api/logs/latest")
+
+        self.assertEqual(response.json()["count"], 1)
+        self.assertEqual(response.json()["items"][0]["filename"], "db-log.xlsx")
+
+    def test_log_api_falls_back_to_file_logs_when_database_fails(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir) / "share"
+            log_dir = Path(tmp_dir) / "logs"
+            root.mkdir()
+            log_dir.mkdir()
+            (log_dir / "upload_log_2026-06-14.jsonl").write_text(
+                json.dumps({"action": "upload_success", "filename": "file-log.xlsx"}, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            config_path = Path(tmp_dir) / "web_config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "db": {
+                            "host": "127.0.0.1",
+                            "database": "QMS",
+                            "username": "sa",
+                            "password": "secret",
+                        },
+                        "share": {"root": str(root)},
+                        "log": {"dir": str(log_dir)},
+                        "auth": {"password": "secret"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            fake_store = SimpleNamespace(read_recent_logs=lambda **kwargs: (_ for _ in ()).throw(RuntimeError("db down")))
+
+            with patch("station_config_web.app._web_db_log_store", return_value=fake_store):
+                client = TestClient(create_app(config_path))
+                response = client.get("/api/logs/latest")
+
+        self.assertEqual(response.json()["count"], 1)
+        self.assertEqual(response.json()["items"][0]["filename"], "file-log.xlsx")
+        self.assertIn("数据库日志读取失败", response.json()["error"])
 
     def test_ensure_web_log_share_access_uses_configured_credentials(self):
         config = WebConfig(

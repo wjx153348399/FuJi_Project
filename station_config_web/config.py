@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -45,12 +45,19 @@ class AuthConfig:
 
 
 @dataclass(frozen=True)
+class RuntimeLogConfig:
+    db_enabled: bool = True
+    db_table: str = "dbo.zk_upload_runtime_log"
+
+
+@dataclass(frozen=True)
 class WebConfig:
     server: ServerConfig
     db: WebDbConfig
     share: ShareConfig
     log: LogConfig
     auth: AuthConfig
+    runtime_log: RuntimeLogConfig = field(default_factory=RuntimeLogConfig)
 
 
 def load_web_config(path: str | Path = "web_config.json") -> WebConfig:
@@ -72,6 +79,7 @@ def parse_web_config(raw: dict[str, Any]) -> WebConfig:
     share = _section(raw, "share")
     log = _optional_section(raw, "log")
     auth = _optional_section(raw, "auth")
+    runtime_log = _optional_section(raw, "runtime_log")
     share_root = _required_str(share, "share.root")
 
     return WebConfig(
@@ -98,6 +106,10 @@ def parse_web_config(raw: dict[str, Any]) -> WebConfig:
         auth=AuthConfig(
             username=_optional_str(auth, "username", "admin"),
             password=_required_str(auth, "auth.password"),
+        ),
+        runtime_log=RuntimeLogConfig(
+            db_enabled=_optional_bool(runtime_log, "db_enabled", True),
+            db_table=_optional_str(runtime_log, "db_table", "dbo.zk_upload_runtime_log"),
         ),
     )
 
@@ -135,6 +147,13 @@ def _optional_str_allow_empty(section: dict[str, Any], key: str, default: str) -
     value = section.get(key, default)
     if not isinstance(value, str):
         raise ConfigError(f"閰嶇疆椤?{key} 蹇呴』鏄瓧绗︿覆")
+    return value
+
+
+def _optional_bool(section: dict[str, Any], key: str, default: bool) -> bool:
+    value = section.get(key, default)
+    if not isinstance(value, bool):
+        raise ConfigError(f"配置项 {key} 必须是布尔值")
     return value
 
 

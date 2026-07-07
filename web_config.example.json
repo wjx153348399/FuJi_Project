@@ -21,6 +21,10 @@
   "log": {
     "dir": "\\\\10.0.8.252\\File\\ZK_LOG"
   },
+  "runtime_log": {
+    "db_enabled": true,
+    "db_table": "dbo.zk_upload_runtime_log"
+  },
   "auth": {
     "username": "admin",
     "password": "CHANGE_ME"

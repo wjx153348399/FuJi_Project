@@ -57,6 +57,7 @@
   },
   "watch": {
     "enabled": true,
+    "mode": "polling",
     "notice_mode": "log_and_daily_summary",
     "poll_interval_seconds": 5,
     "debounce_seconds": 5,

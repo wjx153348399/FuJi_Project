@@ -198,6 +198,67 @@ class StationConfigWebAppTest(unittest.TestCase):
         self.assertEqual(response.json()["count"], 1)
         self.assertEqual(response.json()["items"][0]["filename"], "db-log.xlsx")
 
+    def test_logs_page_applies_filter_query_params(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir) / "share"
+            log_dir = Path(tmp_dir) / "logs"
+            root.mkdir()
+            log_dir.mkdir()
+            config_path = Path(tmp_dir) / "web_config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "db": {
+                            "host": "127.0.0.1",
+                            "database": "QMS",
+                            "username": "sa",
+                            "password": "secret",
+                        },
+                        "share": {"root": str(root)},
+                        "log": {"dir": str(log_dir)},
+                        "auth": {"password": "secret"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            calls = []
+
+            def fake_read_recent_logs(**kwargs):
+                calls.append(kwargs)
+                return [
+                    {
+                        "log_type": "upload",
+                        "log_date": "2026-06-14",
+                        "level": "info",
+                        "status": "success",
+                        "time": "2026-06-14 08:00:00",
+                        "action": "upload_success",
+                        "filename": "ok.xlsx",
+                        "path": "share/ok.xlsx",
+                        "flow": "",
+                        "http_status": 200,
+                        "retry_count": 0,
+                        "message": "",
+                        "raw": {},
+                    }
+                ]
+
+            fake_store = SimpleNamespace(read_recent_logs=fake_read_recent_logs)
+
+            with patch("station_config_web.app._web_db_log_store", return_value=fake_store):
+                client = TestClient(create_app(config_path))
+                response = client.get("/logs?type=upload&status=success&keyword=ok")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            calls[0],
+            {"log_type": "upload", "limit": 200, "keyword": "ok", "status": "success"},
+        )
+        self.assertIn("ok.xlsx", response.text)
+        self.assertIn("Type: upload", response.text)
+        self.assertIn("Status: success", response.text)
+        self.assertIn("Keyword: ok", response.text)
+
     def test_status_api_includes_service_status(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir) / "share"

@@ -86,6 +86,7 @@ class RuntimeLogConfig:
 @dataclass(frozen=True)
 class WatchConfig:
     enabled: bool = False
+    mode: str = "native"
     notice_mode: str = "log_and_daily_summary"
     poll_interval_seconds: int = 5
     debounce_seconds: int = 5
@@ -160,6 +161,7 @@ def parse_config(raw: dict[str, Any]) -> AppConfig:
         ),
         watch=WatchConfig(
             enabled=_optional_bool(watch, "enabled", False),
+            mode=_optional_watch_mode(watch),
             notice_mode=_optional_str(watch, "notice_mode", "log_and_daily_summary"),
             poll_interval_seconds=_optional_positive_int(watch, "poll_interval_seconds", 5),
             debounce_seconds=_optional_positive_int(watch, "debounce_seconds", 5),
@@ -253,6 +255,13 @@ def _parse_station_config(section: dict[str, Any]) -> StationConfig:
             query_timeout_seconds=_optional_positive_int(db, "query_timeout_seconds", 10),
         ),
     )
+
+
+def _optional_watch_mode(section: dict[str, Any]) -> str:
+    mode = _optional_str(section, "mode", "native")
+    if mode not in {"native", "polling"}:
+        raise ConfigError("watch.mode must be one of: native, polling")
+    return mode
 
 
 def _required_str(section: dict[str, Any], dotted_name: str) -> str:

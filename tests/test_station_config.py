@@ -33,38 +33,36 @@ class FakeRepository:
 class StationConfigTest(unittest.TestCase):
     def test_json_mode_uses_scan_targets_without_repository(self):
         repository = FakeRepository(
-            targets=[ScanTargetConfig(flow="A50", dir="db-dir")]
+            targets=[ScanTargetConfig(flow="A050", dir="db-dir")]
         )
 
         effective = build_effective_scan_config(_config(source="json"), repository)
 
         self.assertEqual(repository.calls, 0)
         self.assertEqual(effective.effective_source, "json")
-        self.assertEqual(effective.scan.targets[0].flow, "A10")
+        self.assertEqual(effective.scan.targets[0].flow, "A010")
         self.assertEqual(effective.scan.targets[0].dir, "json-dir")
 
     def test_db_mode_uses_repository_targets(self):
         repository = FakeRepository(
-            targets=[ScanTargetConfig(flow="A50", dir="db-dir")]
+            targets=[ScanTargetConfig(flow="A050", dir="db-dir")]
         )
 
         effective = build_effective_scan_config(_config(source="db"), repository)
 
         self.assertEqual(repository.calls, 1)
         self.assertEqual(effective.effective_source, "db")
-        self.assertEqual(effective.scan.targets[0].flow, "A50")
+        self.assertEqual(effective.scan.targets[0].flow, "A050")
         self.assertEqual(effective.scan.targets[0].dir, "db-dir")
         self.assertEqual(effective.scan.target_dirs, [])
 
-    def test_db_mode_allows_blank_flow(self):
+    def test_db_mode_rejects_blank_flow(self):
         repository = FakeRepository(
             targets=[ScanTargetConfig(flow=" ", dir="db-dir")]
         )
 
-        effective = build_effective_scan_config(_config(source="db"), repository)
-
-        self.assertEqual(effective.scan.targets[0].flow, "")
-        self.assertEqual(effective.scan.targets[0].dir, "db-dir")
+        with self.assertRaisesRegex(ConfigError, "flow is required"):
+            build_effective_scan_config(_config(source="db"), repository)
 
     def test_db_mode_raises_when_repository_fails(self):
         repository = FakeRepository(error=ConfigError("database connection failed"))
@@ -80,7 +78,7 @@ class StationConfigTest(unittest.TestCase):
 
     def test_db_then_json_uses_database_when_available(self):
         repository = FakeRepository(
-            targets=[ScanTargetConfig(flow="A50", dir="db-dir")]
+            targets=[ScanTargetConfig(flow="A050", dir="db-dir")]
         )
 
         effective = build_effective_scan_config(_config(source="db_then_json"), repository)
@@ -88,7 +86,7 @@ class StationConfigTest(unittest.TestCase):
         self.assertEqual(effective.requested_source, "db_then_json")
         self.assertEqual(effective.effective_source, "db")
         self.assertIsNone(effective.fallback_reason)
-        self.assertEqual(effective.scan.targets[0].flow, "A50")
+        self.assertEqual(effective.scan.targets[0].flow, "A050")
 
     def test_db_then_json_falls_back_to_json_when_repository_fails(self):
         repository = FakeRepository(error=ConfigError("database connection failed"))
@@ -97,7 +95,7 @@ class StationConfigTest(unittest.TestCase):
 
         self.assertEqual(effective.requested_source, "db_then_json")
         self.assertEqual(effective.effective_source, "json")
-        self.assertEqual(effective.scan.targets[0].flow, "A10")
+        self.assertEqual(effective.scan.targets[0].flow, "A010")
         self.assertIn("database connection failed", effective.fallback_reason)
 
     def test_db_then_json_falls_back_to_json_when_database_returns_empty_targets(self):
@@ -111,8 +109,8 @@ class StationConfigTest(unittest.TestCase):
     def test_duplicate_directory_config_raises_clear_error(self):
         repository = FakeRepository(
             targets=[
-                ScanTargetConfig(flow="A10", dir="same-dir"),
-                ScanTargetConfig(flow="A50", dir="same-dir"),
+                ScanTargetConfig(flow="A010", dir="same-dir"),
+                ScanTargetConfig(flow="A050", dir="same-dir"),
             ]
         )
 
@@ -121,18 +119,18 @@ class StationConfigTest(unittest.TestCase):
 
     def test_absolute_directory_config_raises_clear_error(self):
         repository = FakeRepository(
-            targets=[ScanTargetConfig(flow="A10", dir=r"C:\share\station")]
+            targets=[ScanTargetConfig(flow="A010", dir=r"C:\share\station")]
         )
 
         with self.assertRaisesRegex(ConfigError, "relative to share.root"):
             build_effective_scan_config(_config(source="db"), repository)
 
-    def test_unsupported_flow_raises_clear_error(self):
+    def test_invalid_flow_code_raises_clear_error(self):
         repository = FakeRepository(
-            targets=[ScanTargetConfig(flow="A 10", dir="station-a")]
+            targets=[ScanTargetConfig(flow="AFC", dir="station-a")]
         )
 
-        with self.assertRaisesRegex(ConfigError, "unsupported characters"):
+        with self.assertRaisesRegex(ConfigError, "station code like A032"):
             build_effective_scan_config(_config(source="db"), repository)
 
 
@@ -143,7 +141,7 @@ def _config(source: str) -> AppConfig:
         upload=UploadConfig(url="http://example.test/upload"),
         scan=ScanConfig(
             target_dirs=["legacy-dir"],
-            targets=[ScanTargetConfig(flow="A10", dir="json-dir")],
+            targets=[ScanTargetConfig(flow="A010", dir="json-dir")],
         ),
         watch=WatchConfig(),
         station_config=StationConfig(

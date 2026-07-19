@@ -15,6 +15,7 @@ from zk_impedance_upload.parser import ParsedFile
 from zk_impedance_upload.realtime_uploader import RealtimeUploadService
 from zk_impedance_upload.share_auth import ensure_share_access
 from zk_impedance_upload.station_config import EffectiveScanConfig, StationTargetRepository, build_effective_scan_config
+from zk_impedance_upload.upload_task_store import UploadTaskStore
 from zk_impedance_upload.uploader import UploadResult
 
 
@@ -208,6 +209,7 @@ def run_watch_service(
     progress_func: Callable[[str], None] | None = None,
     station_repository: StationTargetRepository | None = None,
     upload_func: UploadFunc | None = None,
+    task_store: UploadTaskStore | None = None,
 ) -> int:
     sleep = sleep_func or time.sleep
     get_now = now_func or _current_time
@@ -229,17 +231,16 @@ def run_watch_service(
     if effective_scan.fallback_reason:
         progress(f"工站目录配置已回退到 JSON: {effective_scan.fallback_reason}")
 
-    if max_iterations is None:
+    if max_iterations is None and config.watch.mode != "polling":
         return _run_native_watch_service(
             config=config,
             scan_config=effective_scan.scan,
-            scan_signature=_scan_config_signature(effective_scan.scan),
             log_store=log_store,
             sleep_func=sleep,
             now_func=get_now,
             progress_func=progress,
-            station_repository=station_repository,
             upload_func=upload_func,
+            task_store=task_store,
         )
 
     progress("正在采集初始监听快照...")
@@ -258,6 +259,7 @@ def run_watch_service(
         effective_scan.scan,
         log_store,
         upload_func=upload_func,
+        task_store=task_store,
         sleep_func=sleep,
         now_func=get_now,
         progress_func=progress,
@@ -285,6 +287,7 @@ def run_watch_service(
                     effective_scan.scan,
                     log_store,
                     upload_func=upload_func,
+                    task_store=task_store,
                     sleep_func=sleep,
                     now_func=get_now,
                     progress_func=progress,
@@ -313,6 +316,7 @@ def run_watch_service(
                 progress(f"监听事件: {event.event_type} {event.path}")
                 if not event.is_dir and event.event_type in {"watch_created", "watch_modified", "watch_renamed"}:
                     result = realtime_service.handle_event(event)
+                    realtime_service.drain_pending_once()
                     progress(f"实时上传处理: status={result.status} path={result.path}")
             previous = current
         except Exception as exc:  # pragma: no cover - recovery branch
@@ -342,13 +346,12 @@ def _run_native_watch_service(
     *,
     config: AppConfig,
     scan_config: ScanConfig,
-    scan_signature: tuple[object, ...],
     log_store: LogStore,
     sleep_func: Callable[[float], None],
     now_func: Callable[[], datetime],
     progress_func: Callable[[str], None],
-    station_repository: StationTargetRepository | None,
     upload_func: UploadFunc | None,
+    task_store: UploadTaskStore | None,
 ) -> int:
     try:
         from watchdog.events import FileSystemEvent, FileSystemEventHandler
@@ -356,7 +359,6 @@ def _run_native_watch_service(
     except ImportError as exc:  # pragma: no cover - deployment dependency branch
         raise RuntimeError("watchdog is required for realtime watch service; run pip install -r requirements.txt") from exc
 
-    root_path = Path(config.share.root)
     observer, realtime_service, has_targets = _start_native_observer(
         observer_class=Observer,
         handler_class=FileSystemEventHandler,
@@ -367,52 +369,18 @@ def _run_native_watch_service(
         now_func=now_func,
         progress_func=progress_func,
         upload_func=upload_func,
+        task_store=task_store,
     )
     if not has_targets:
         return 2
     progress_func("watchdog service started")
-    last_reload_check = time.monotonic()
     try:
         while True:
             sleep_func(1)
-            current_monotonic = time.monotonic()
-            if current_monotonic - last_reload_check < config.watch.config_reload_interval_seconds:
-                continue
-            last_reload_check = current_monotonic
-            reload_result = _reload_effective_scan_if_changed(
-                config=config,
-                current_signature=scan_signature,
-                current_target_signature=_watch_targets_signature(config.share.root, scan_config),
-                station_repository=station_repository,
-                log_store=log_store,
-                now_func=now_func,
-                progress_func=progress_func,
-            )
-            if reload_result is None:
-                continue
-            effective_scan, scan_signature, _ = reload_result
-            if not _valid_watch_targets(root_path, effective_scan.scan):
-                progress_func("工站目录配置热重载跳过: no valid watch target directories")
-                continue
-            observer.stop()
-            observer.join()
-            scan_config = effective_scan.scan
-            observer, realtime_service, has_targets = _start_native_observer(
-                observer_class=Observer,
-                handler_class=FileSystemEventHandler,
-                config=config,
-                scan_config=scan_config,
-                log_store=log_store,
-                sleep_func=sleep_func,
-                now_func=now_func,
-                progress_func=progress_func,
-                upload_func=upload_func,
-            )
-            if not has_targets:
-                return 2
     except KeyboardInterrupt:  # pragma: no cover - manual stop branch
         progress_func("watchdog service stopping")
     finally:
+        realtime_service.stop_worker()
         observer.stop()
         observer.join()
     return 0
@@ -429,6 +397,7 @@ def _start_native_observer(
     now_func: Callable[[], datetime],
     progress_func: Callable[[str], None],
     upload_func: UploadFunc | None,
+    task_store: UploadTaskStore | None,
 ):
     root_path = Path(config.share.root)
     snapshot = collect_watch_snapshot(root_path, scan_config)
@@ -438,6 +407,7 @@ def _start_native_observer(
         scan_config,
         log_store,
         upload_func=upload_func,
+        task_store=task_store,
         sleep_func=sleep_func,
         now_func=now_func,
         progress_func=progress_func,
@@ -466,6 +436,7 @@ def _start_native_observer(
         return observer, realtime_service, False
 
     observer.start()
+    realtime_service.start_worker()
     return observer, realtime_service, True
 
 

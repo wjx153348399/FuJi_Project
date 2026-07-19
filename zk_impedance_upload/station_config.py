@@ -9,7 +9,7 @@ from zk_impedance_upload.config import AppConfig, ScanConfig, ScanTargetConfig, 
 from zk_impedance_upload.exceptions import ConfigError
 
 
-_FLOW_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+_FLOW_PATTERN = re.compile(r"^A\d{3}$", re.IGNORECASE)
 _TABLE_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$")
 
 
@@ -145,9 +145,11 @@ def _validate_targets(targets: list[ScanTargetConfig]) -> list[ScanTargetConfig]
     normalized_targets: list[ScanTargetConfig] = []
     seen_dirs: set[str] = set()
     for index, target in enumerate(targets):
-        flow = target.flow.strip()
-        if flow and not _FLOW_PATTERN.match(flow):
-            raise ConfigError(f"station target[{index}].flow contains unsupported characters")
+        flow = target.flow.strip().upper()
+        if not flow:
+            raise ConfigError(f"station target[{index}].flow is required for enabled upload")
+        if not _FLOW_PATTERN.match(flow):
+            raise ConfigError(f"station target[{index}].flow must be a station code like A032")
 
         target_dir = _normalize_directory(target.dir)
         if not target_dir:

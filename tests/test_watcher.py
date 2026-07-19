@@ -16,6 +16,7 @@ from zk_impedance_upload.config import (
     WatchConfig,
 )
 from zk_impedance_upload.log_store import LogStore
+from zk_impedance_upload.upload_task_store import InMemoryUploadTaskStore
 from zk_impedance_upload.uploader import UploadResult
 from zk_impedance_upload.watcher import (
     EventDebouncer,
@@ -182,8 +183,8 @@ class WatcherTest(unittest.TestCase):
             config = _build_app_config(root, log_dir, source="db")
             repository = SequencedRepository(
                 [
-                    [ScanTargetConfig(flow="A10", dir="target")],
-                    [ScanTargetConfig(flow="A20", dir="target")],
+                    [ScanTargetConfig(flow="A010", dir="target")],
+                    [ScanTargetConfig(flow="A020", dir="target")],
                 ]
             )
             uploaded_flows = []
@@ -202,11 +203,12 @@ class WatcherTest(unittest.TestCase):
                 now_func=lambda: datetime(2026, 6, 14, 8, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
                 station_repository=repository,
                 upload_func=lambda parsed_file: _record_upload_flow(parsed_file, uploaded_flows),
+                task_store=InMemoryUploadTaskStore(),
             )
 
             watch_log = (log_dir / "watch_log_2026-06-14.jsonl").read_text(encoding="utf-8")
 
-        self.assertEqual(uploaded_flows, ["A20"])
+        self.assertEqual(uploaded_flows, ["A020"])
         self.assertIn("watch_config_reloaded", watch_log)
 
     def test_run_watch_service_hot_reload_new_directory_does_not_upload_existing_files(self):
@@ -222,8 +224,8 @@ class WatcherTest(unittest.TestCase):
             config = _build_app_config(root, log_dir, source="db")
             repository = SequencedRepository(
                 [
-                    [ScanTargetConfig(flow="A10", dir="old")],
-                    [ScanTargetConfig(flow="A10", dir="new")],
+                    [ScanTargetConfig(flow="A010", dir="old")],
+                    [ScanTargetConfig(flow="A010", dir="new")],
                 ]
             )
             uploaded = []

@@ -44,11 +44,13 @@ class RealtimeUploaderTest(unittest.TestCase):
             result = service.handle_event(
                 WatchEvent("watch_created", file_path, is_dir=False, is_excel=True)
             )
+            drained = service.drain_pending_once()
 
             upload_lines = (log_dir / "upload_log_2026-06-14.jsonl").read_text(encoding="utf-8").splitlines()
             watch_lines = (log_dir / "watch_log_2026-06-14.jsonl").read_text(encoding="utf-8").splitlines()
 
-        self.assertEqual(result.status, "uploaded")
+        self.assertEqual(result.status, "queued")
+        self.assertTrue(drained)
         self.assertEqual(uploaded, ["report.xlsx"])
         self.assertEqual(json.loads(upload_lines[-1])["action"], "upload_success")
         self.assertEqual(json.loads(watch_lines[-1])["event_type"], "realtime_upload_success")
@@ -100,8 +102,10 @@ class RealtimeUploaderTest(unittest.TestCase):
             result = service.handle_event(
                 WatchEvent("watch_created", file_path, is_dir=False, is_excel=True)
             )
+            drained = service.drain_pending_once()
 
-        self.assertEqual(result.status, "uploaded")
+        self.assertEqual(result.status, "queued")
+        self.assertTrue(drained)
         self.assertEqual(uploaded, ["today.xlsx"])
 
     def test_wait_for_stable_file_requires_repeated_same_stat(self):
@@ -135,9 +139,11 @@ class RealtimeUploaderTest(unittest.TestCase):
             with patch("zk_impedance_upload.realtime_uploader.time.monotonic", side_effect=[10.0, 10.1, 11.0]):
                 first = service.handle_event(event)
                 second = service.handle_event(event)
+            drained = service.drain_pending_once()
 
-        self.assertEqual(first.status, "uploaded")
+        self.assertEqual(first.status, "queued")
         self.assertEqual(second.status, "skipped")
+        self.assertTrue(drained)
         self.assertEqual(uploaded, ["report.xlsx"])
 
 

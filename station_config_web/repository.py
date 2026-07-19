@@ -10,6 +10,7 @@ from zk_impedance_upload.exceptions import ConfigError
 
 
 _TABLE_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$")
+_FLOW_CODE_PATTERN = re.compile(r"^A\d{3}$", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -194,6 +195,8 @@ class StationDirectoryRepository:
 
     def set_enabled(self, config_id: int, enabled: bool, updated_by: str | None = "web") -> None:
         table_name = _validated_table_name(self.config.db.table)
+        if enabled:
+            self._ensure_config_can_be_enabled(config_id)
         sql = f"UPDATE {table_name} SET enabled = ?, updated_by = ? WHERE id = ?"
         with _connect(self.config.db) as connection:
             cursor = connection.cursor()
@@ -201,6 +204,15 @@ class StationDirectoryRepository:
             if getattr(cursor, "rowcount", 1) == 0:
                 raise ConfigError(f"配置不存在: {config_id}")
             connection.commit()
+
+    def _ensure_config_can_be_enabled(self, config_id: int) -> None:
+        table_name = _validated_table_name(self.config.db.table)
+        sql = f"SELECT flow FROM {table_name} WHERE id = ?"
+        with _connect(self.config.db) as connection:
+            row = connection.cursor().execute(sql, int(config_id)).fetchone()
+        if row is None:
+            raise ConfigError(f"station directory config does not exist: {config_id}")
+        _validate_enabled_flow(str(row.flow or ""))
 
     def ensure_directory_path_unique(self, directory_path: str, exclude_id: int | None = None) -> None:
         table_name = _validated_table_name(self.config.db.table)
@@ -290,7 +302,9 @@ class StationDirectoryRepository:
 
 def validate_station_directory_input(data: StationDirectoryInput) -> StationDirectoryInput:
     directory_path = validate_relative_directory_path(data.directory_path)
-    flow = data.flow.strip()
+    flow = data.flow.strip().upper()
+    if data.enabled:
+        _validate_enabled_flow(flow)
     station_name = _clean_optional_text(data.station_name)
     remark = _clean_optional_text(data.remark)
     updated_by = _clean_optional_text(data.updated_by) or "web"
@@ -326,6 +340,14 @@ def _clean_optional_text(value: str | None) -> str | None:
         return None
     clean_value = value.strip()
     return clean_value or None
+
+
+def _validate_enabled_flow(flow: str) -> None:
+    value = flow.strip().upper()
+    if not value:
+        raise ConfigError("flow is required when station directory config is enabled")
+    if not _FLOW_CODE_PATTERN.match(value):
+        raise ConfigError("flow must be a station code like A032 when config is enabled")
 
 
 def _flow_state(flow: str) -> str:

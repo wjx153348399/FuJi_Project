@@ -41,6 +41,7 @@ class ConfigTest(unittest.TestCase):
                         },
                         "watch": {
                             "enabled": False,
+                            "mode": "polling",
                             "notice_mode": "log_and_daily_summary",
                             "poll_interval_seconds": 5,
                             "debounce_seconds": 5,
@@ -63,6 +64,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(config.scan.extensions, [".xls", ".xlsx"])
         self.assertIn("ผลิตภัณฑ์สำเร็จรูปCP-阻抗", config.scan.target_dirs)
         self.assertFalse(config.watch.enabled)
+        self.assertEqual(config.watch.mode, "polling")
         self.assertEqual(config.watch.poll_interval_seconds, 5)
         self.assertEqual(config.watch.debounce_seconds, 5)
         self.assertEqual(config.watch.config_reload_interval_seconds, 7)
@@ -134,6 +136,25 @@ class ConfigTest(unittest.TestCase):
             )
 
             with self.assertRaisesRegex(ConfigError, "poll_interval_seconds"):
+                load_config(config_path)
+
+    def test_invalid_watch_mode_raises_clear_error(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config_path = Path(tmp_dir) / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "share": {"root": "\\\\server\\share", "username": "IT", "password": "FQCIT"},
+                        "log": {"dir": "\\\\server\\log"},
+                        "upload": {"url": "http://example.test/upload"},
+                        "scan": {"target_dirs": []},
+                        "watch": {"mode": "invalid"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ConfigError, "watch.mode"):
                 load_config(config_path)
 
     def test_loads_station_directory_targets(self):

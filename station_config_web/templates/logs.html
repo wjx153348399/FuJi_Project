@@ -35,14 +35,21 @@
           <option value="success" {% if status == "success" %}selected{% endif %}>Success</option>
           <option value="failed" {% if status == "failed" %}selected{% endif %}>Failed</option>
           <option value="skipped" {% if status == "skipped" %}selected{% endif %}>Skipped</option>
+          <option value="info" {% if status == "info" %}selected{% endif %}>Info</option>
           <option value="pending" {% if status == "pending" %}selected{% endif %}>Pending</option>
         </select>
         <input name="keyword" value="{{ keyword }}" placeholder="file/path/flow/error">
         <button type="submit">Search</button>
+        <a class="small-link clear-link" href="/logs">Clear</a>
       </form>
 
       <section class="summary">
         <span>Rows: {{ logs|length }}</span>
+        <span>Type: {{ type }}</span>
+        <span>Status: {{ status }}</span>
+        {% if keyword %}
+          <span>Keyword: {{ keyword }}</span>
+        {% endif %}
       </section>
 
       <section class="table-wrap">

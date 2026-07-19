@@ -83,6 +83,14 @@ class SuspectFlowRow(Row):
     flow = "OUTER"
 
 
+class FlowLookupRow:
+    flow = "A032"
+
+
+class BlankFlowLookupRow:
+    flow = " "
+
+
 class StationConfigWebRepositoryTest(unittest.TestCase):
     def test_list_configs_builds_rows_without_checking_network_path(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -150,7 +158,7 @@ class StationConfigWebRepositoryTest(unittest.TestCase):
         ):
             StationDirectoryRepository(_config()).create_config(
                 StationDirectoryInput(
-                    flow=" AFC ",
+                    flow=" A032 ",
                     station_name=" LXD ",
                     directory_path=r"folder/target",
                     enabled=True,
@@ -163,11 +171,24 @@ class StationConfigWebRepositoryTest(unittest.TestCase):
         self.assertIn("INSERT INTO", write_connection.cursor_obj.sql)
         self.assertEqual(
             write_connection.cursor_obj.params,
-            ["AFC", "LXD", r"folder\target", 1, 20, "test", "web", "web"],
+            ["A032", "LXD", r"folder\target", 1, 20, "test", "web", "web"],
         )
         self.assertTrue(write_connection.committed)
 
-    def test_create_config_allows_blank_flow(self):
+    def test_create_config_rejects_enabled_blank_flow(self):
+        with self.assertRaisesRegex(ConfigError, "flow is required"):
+            StationDirectoryRepository(_config()).create_config(
+                StationDirectoryInput(
+                    flow=" ",
+                    station_name="LXD",
+                    directory_path="target",
+                    enabled=True,
+                    sort_order=0,
+                    remark=None,
+                )
+            )
+
+    def test_create_config_allows_blank_flow_when_disabled(self):
         unique_connection = FakeConnection(one=None)
         write_connection = FakeConnection()
 
@@ -180,13 +201,14 @@ class StationConfigWebRepositoryTest(unittest.TestCase):
                     flow=" ",
                     station_name="LXD",
                     directory_path="target",
-                    enabled=True,
+                    enabled=False,
                     sort_order=0,
                     remark=None,
                 )
             )
 
         self.assertEqual(write_connection.cursor_obj.params[0], "")
+        self.assertEqual(write_connection.cursor_obj.params[3], 0)
         self.assertTrue(write_connection.committed)
 
     def test_create_config_rejects_duplicate_directory_path(self):
@@ -196,7 +218,7 @@ class StationConfigWebRepositoryTest(unittest.TestCase):
             with self.assertRaisesRegex(ConfigError, "已存在"):
                 StationDirectoryRepository(_config()).create_config(
                     StationDirectoryInput(
-                        flow="LXD",
+                        flow="A032",
                         station_name=None,
                         directory_path="target",
                         enabled=True,
@@ -239,6 +261,27 @@ class StationConfigWebRepositoryTest(unittest.TestCase):
         self.assertIn("SET enabled", connection.cursor_obj.sql)
         self.assertEqual(connection.cursor_obj.params, [0, "admin", 3])
         self.assertTrue(connection.committed)
+
+    def test_set_enabled_rejects_blank_flow(self):
+        read_connection = FakeConnection(one=BlankFlowLookupRow())
+
+        with patch("station_config_web.repository._connect", return_value=read_connection):
+            with self.assertRaisesRegex(ConfigError, "flow is required"):
+                StationDirectoryRepository(_config()).set_enabled(3, True, updated_by="admin")
+
+    def test_set_enabled_accepts_valid_flow(self):
+        read_connection = FakeConnection(one=FlowLookupRow())
+        write_connection = FakeConnection(rowcount=1)
+
+        with patch(
+            "station_config_web.repository._connect",
+            side_effect=[read_connection, write_connection],
+        ):
+            StationDirectoryRepository(_config()).set_enabled(3, True, updated_by="admin")
+
+        self.assertIn("SELECT flow", read_connection.cursor_obj.sql)
+        self.assertEqual(write_connection.cursor_obj.params, [1, "admin", 3])
+        self.assertTrue(write_connection.committed)
 
     def test_check_and_record_directory_updates_path_status(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

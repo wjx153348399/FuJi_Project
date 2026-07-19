@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <title>{% if mode == "new" %}新增{% else %}编辑{% endif %}工站目录配置</title>
-    <link rel="stylesheet" href="/static/style.css?v=dialog2">
+    <link rel="stylesheet" href="/static/style.css?v=flow-required">
   </head>
   <body>
     <main class="page narrow">
@@ -27,20 +27,21 @@
           {% if allow_force_save %}
             <input type="hidden" name="confirm_missing_path" value="1">
           {% endif %}
+
           <label>
-            <span>flow</span>
-            <input name="flow" value="{{ form.flow }}" placeholder="可选，确认真实工站代码后填写，例如 A557 / A558">
-            <small class="field-help warn-text">未确认真实工站代码时请留空，不要填写 AFC / OUTER / 文件名中的 AA01。</small>
+            <span>flow（启用时必填）</span>
+            <input name="flow" value="{{ form.flow }}" placeholder="请输入上传接口使用的工站代码，例如 A032">
+            <small class="field-help warn-text">启用后，新文件上传会把该值作为 flow 参数传给接口；不要填写 AFC / AFX / JXN / LXD / ZGL / OUTER 这类区域简称。</small>
           </label>
 
           <label>
             <span>工站显示名称</span>
-            <input name="station_name" value="{{ form.station_name }}" placeholder="仅用于页面显示，例如 AFC / 图形后">
+            <input name="station_name" value="{{ form.station_name }}" placeholder="仅用于页面显示，例如 电测 / 飞针 / AFX">
           </label>
 
           <label>
             <span>相对目录路径</span>
-            <textarea name="directory_path" rows="4" required placeholder="只填写共享盘根目录下面的相对路径，不填写 \\server\share 或 C:\">{{ form.directory_path }}</textarea>
+            <textarea name="directory_path" rows="4" required placeholder="只填写共享盘根目录下的相对路径，不填写 \\server\share 或 C:\">{{ form.directory_path }}</textarea>
           </label>
 
           <div class="form-grid">
@@ -75,9 +76,16 @@
         const flow = form.flow.value.trim();
         const enabled = form.enabled.value === "1";
         if (enabled && !flow) {
-          return confirm("这条配置的 flow 为空，启用后上传时不会传工站代码。确认保存并启用？");
+          alert("启用配置时必须填写 flow，例如 A032。");
+          form.flow.focus();
+          return false;
         }
-        return confirm("确认保存这条工站目录配置？保存后会影响自动上传扫描目录。");
+        if (enabled && !/^A\d{3}$/i.test(flow)) {
+          alert("flow 必须是 A032 这种工站代码。");
+          form.flow.focus();
+          return false;
+        }
+        return confirm("确认保存这条工站目录配置？保存后会影响自动上传监听目录。");
       }
     </script>
   </body>
